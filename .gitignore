@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+build/
+.docusaurus/
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Upstream source (already converted into docs/)
+freebci-daq/
+
+# Env
+.env
+.env.local
