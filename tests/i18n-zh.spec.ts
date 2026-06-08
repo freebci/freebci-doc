@@ -67,6 +67,10 @@ test('Internal links on ZH docs should stay under /zh/', async ({ page }) => {
         text: (a.textContent || '').trim(),
         href: (a as HTMLAnchorElement).href,
         raw: a.getAttribute('href'),
+        isLocaleSwitcher: Boolean(
+          a.classList.contains('dropdown__link') &&
+            a.closest('.navbar__item.dropdown.dropdown--hoverable')
+        ),
       }))
       .filter(a => a.raw && !a.raw.startsWith('#'))
       .slice(0, 100)
@@ -78,7 +82,7 @@ test('Internal links on ZH docs should stay under /zh/', async ({ page }) => {
     if (!link.raw) return false;
     if (link.raw.startsWith('http')) return false;
     if (link.raw.startsWith('mailto:')) return false;
-    if (link.text === 'English') return false;
+    if (link.isLocaleSwitcher) return false;
     if (link.raw.startsWith('/docs/freebci-daq')) return true;
     return false;
   });
