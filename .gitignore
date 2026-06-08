@@ -8,6 +8,10 @@ build/
 # Test artifacts
 test-results/
 playwright-report/
+tests/chunk-check.cjs
+tests/live-deep.cjs
+tests/live-test.cjs
+tests/local-test.cjs
 
 # OS
 .DS_Store
