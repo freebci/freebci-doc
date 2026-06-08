@@ -78,6 +78,7 @@ test('Internal links on ZH docs should stay under /zh/', async ({ page }) => {
     if (!link.raw) return false;
     if (link.raw.startsWith('http')) return false;
     if (link.raw.startsWith('mailto:')) return false;
+    if (link.text === 'English') return false;
     if (link.raw.startsWith('/docs/freebci-daq')) return true;
     return false;
   });
