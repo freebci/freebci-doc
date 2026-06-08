@@ -20,7 +20,7 @@ Thumbs.db
 *.swo
 
 # Upstream source (already converted into docs/)
-freebci-daq/
+/freebci-daq/
 
 # Env
 .env

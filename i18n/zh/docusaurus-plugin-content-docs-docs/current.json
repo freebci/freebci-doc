@@ -1,0 +1,18 @@
+{
+  "version.label": {
+    "message": "Next",
+    "description": "The label for version current"
+  },
+  "sidebar.tutorialSidebar.category.FreeBCI DAQ": {
+    "message": "FreeBCI DAQ",
+    "description": "The label for category FreeBCI DAQ in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Reference": {
+    "message": "Reference",
+    "description": "The label for category Reference in sidebar tutorialSidebar"
+  },
+  "sidebar.tutorialSidebar.category.Developer Tutorials": {
+    "message": "Developer Tutorials",
+    "description": "The label for category Developer Tutorials in sidebar tutorialSidebar"
+  }
+}
