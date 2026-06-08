@@ -1,0 +1,89 @@
+name: CI / Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Build (EN + ZH locales)
+        run: npm run build
+
+      - name: Start serve & wait
+        run: |
+          npx docusaurus serve --port 3000 &
+          for i in $(seq 1 15); do
+            curl -s http://localhost:3000 > /dev/null && break
+            sleep 1
+          done
+
+      - name: Verify EN docs
+        run: |
+          EN_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/docs/freebci-daq/)
+          if [ "$EN_STATUS" != "200" ]; then echo "EN docs failed: $EN_STATUS"; exit 1; fi
+          echo "EN docs: 200 OK"
+
+      - name: Verify ZH docs
+        run: |
+          ZH_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3000/zh/docs/freebci-daq/)
+          if [ "$ZH_STATUS" != "200" ]; then echo "ZH docs failed: $ZH_STATUS"; exit 1; fi
+          ZH_CONTENT=$(curl -s http://localhost:3000/zh/docs/freebci-daq/)
+          if echo "$ZH_CONTENT" | grep -q '浏览器\|脑电采集\|频谱分析'; then
+            echo "ZH docs: 200 OK + Chinese content verified"
+          else
+            echo "ZH docs served but missing Chinese content!"
+            exit 1
+          fi
+          ZH_LANG=$(curl -s http://localhost:3000/zh/docs/freebci-daq/ | grep -o 'html lang="[^"]*"' | head -1)
+          echo "ZH lang attr: $ZH_LANG"
+
+      - name: Verify locale dropdown links
+        run: |
+          EN_DROPDOWN=$(curl -s http://localhost:3000/docs/freebci-daq/ | grep -o 'href="/zh/docs[^"]*"' | head -3)
+          echo "EN → ZH links:"
+          echo "$EN_DROPDOWN"
+          ZH_DROPDOWN=$(curl -s http://localhost:3000/zh/docs/freebci-daq/ | grep -o 'href="/docs[^"]*"' | head -3)
+          echo "ZH → EN links:"
+          echo "$ZH_DROPDOWN"
+
+      - name: Run Playwright E2E tests
+        run: npx playwright test tests/i18n-zh.spec.ts --browser=chromium --reporter=list
+        env:
+          BASE_URL: http://localhost:3000
+
+      - name: Verify build artifacts exist
+        run: |
+          echo "EN pages: $(find build/docs -name 'index.html' | wc -l)"
+          echo "ZH pages: $(find build/zh/docs -name 'index.html' | wc -l)"
+          test -f build/zh/docs/freebci-daq/index.html && echo "ZH daq index: OK"
+          test -f build/zh/docs/freebci-daq/quick-start/index.html && echo "ZH quick-start: OK"
+          test -f build/docs/freebci-daq/index.html && echo "EN daq index: OK"
+
+      - name: Upload build artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-build
+          path: build/
+          retention-days: 7
