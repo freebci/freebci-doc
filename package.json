@@ -21,10 +21,10 @@
     "spell-check": "npx cspell docs/**/*.mdx"
   },
   "dependencies": {
-    "@docusaurus/core": "^3.7.0",
-    "@docusaurus/faster": "^3.7.0",
-    "@docusaurus/module-type-aliases": "^3.7.0",
-    "@docusaurus/preset-classic": "^3.7.0",
+    "@docusaurus/core": "^3.10.1",
+    "@docusaurus/faster": "^3.10.1",
+    "@docusaurus/module-type-aliases": "^3.10.1",
+    "@docusaurus/preset-classic": "^3.10.1",
     "@radix-ui/react-select": "^2.1.5",
     "clsx": "^2.1.1",
     "param-case": "^3.0.4",
@@ -35,7 +35,7 @@
     "react-feather": "^2.0.10"
   },
   "devDependencies": {
-    "@docusaurus/tsconfig": "3.7.0",
+    "@docusaurus/tsconfig": "^3.10.1",
     "@playwright/test": "^1.60.0",
     "@swc/core": "^1.10.11",
     "@typescript-eslint/eslint-plugin": "^5.56.0",

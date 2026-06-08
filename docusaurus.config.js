@@ -33,7 +33,7 @@ const config = {
   plugins: [tailwindPlugin],
 
   future: {
-    experimental_faster: false,
+    v4: true,
   },
 
   trailingSlash: true,
