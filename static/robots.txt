@@ -1,0 +1,2 @@
+User-agent: *
+Sitemap: https://freebci.org/sitemap.xml

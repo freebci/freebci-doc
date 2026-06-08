@@ -1,0 +1,17 @@
+- question: What is FreeBCI?
+  answer: |
+    FreeBCI is an open-source brain-computer interface platform. Both the hardware designs and software are fully open source.
+  tags:
+    - general
+
+- question: How do I get started with FreeBCI?
+  answer: |
+    Check out the [Getting Started](/docs/getting-started) guide in our documentation.
+  tags:
+    - general
+
+- question: Where can I find the source code?
+  answer: |
+    All FreeBCI source code is available on [GitHub](https://github.com/freebci).
+  tags:
+    - general
