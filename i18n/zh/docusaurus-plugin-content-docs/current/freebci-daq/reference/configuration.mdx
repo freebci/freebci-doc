@@ -1,0 +1,44 @@
+---
+sidebar_position: 5
+sidebar_label: '配置参考'
+---
+
+# 配置参考
+
+参数解析优先级：高级调参（localStorage）> `.env`（VITE_*）> 内置默认值。
+
+## 环境变量
+
+```bash
+cp .env.example .env
+```
+
+| 变量 | 默认 | 说明 |
+|---|---|---|
+| `VITE_EMA_ALPHA` | 0.1 | EI EMA 平滑 |
+| `VITE_ALERT_THRESHOLD` | 0.3 | EI 告警红线 |
+| `VITE_INITIAL_UNRELIABLE` | 30 | 预热秒数 |
+| `VITE_FOCUS_BASELINE` | 15 | 基线窗口 |
+| `VITE_FOCUS_DECISION` | 15 | 判定窗口 |
+| `VITE_FOCUS_WARMUP` | 30 | 基线前等待 |
+
+必须以 `VITE_` 为前缀。构建时由 Vite 内联。
+
+## 调参场景
+
+| 场景 | EMA α | 告警阈值 | 预热 |
+|---|---|---|---|
+| 噪声硬件 | 0.1 | 0.3 | 60s |
+| 干净、快速 | 0.35 | 0.6 | 20s |
+| 默认 | 0.1 | 0.3 | 30s |
+
+## 高级调参面板
+
+系统页面。调整 → **应用并重载**。**恢复默认值** 清除 localStorage 覆盖。
+
+## 相关文件
+
+- `src/config/eeg.ts` — 全局 EEG 常量
+- `src/focus/config.ts` — 专注度参数
+- `.env.example` — 环境变量模板
+- `TUNING.md` — 详细调参指南

@@ -1,0 +1,46 @@
+---
+sidebar_position: 2
+sidebar_label: '数据管线'
+---
+
+# 数据流水线
+
+从硬件到可视化的完整数据处理流程。
+
+```
+EEG 硬件 → Web Serial（921600 波特率）→ 二进制协议解析器（int24）
+  ├─ rawWaveformBus → Canvas（原始波形）
+  ├─ Butterworth IIR 4 阶 → filteredWaveformBus → Canvas（滤波后）
+  ├─ FFT 分析器（2s 窗口、0.5s 步长、512 点、Hann 窗）
+  │    ├─ 频带功率 → EI 趋势（Zustand + EMA）
+  │    ├─ 频带功率 → 专注度分类
+  │    ├─ 频带功率 → 脑区热力图
+  │    └─ 五频段特征帧 → IndexedDB → AI Agent（LLM）
+  └─ CSV 写入器（FileSystem API，可选）
+```
+
+## 观察者总线
+
+原始和滤波波形使用观察者总线（`rawWaveformBus`、`filteredWaveformBus`），避免 250 Hz 数据触发 React 重渲染。每个总线为环形缓冲区（600 秒容量），提供 `push` / `copyLatest` / `reset` 接口。
+
+## 滤波器
+
+4 阶 Butterworth IIR，Direct Form II 拓扑。带通（高通 + 低通级联）。更改截止频率会重建滤波器并清空 2 秒分析窗口。
+
+## FFT 分析
+
+2 秒窗口（500 样本）、0.5 秒步长（125 样本）、512 点 FFT、Hann 窗函数。频段：Delta (0.5–4)、Theta (4–8)、Alpha (8–13)、Beta (13–30)、Gamma (30–50) Hz。
+
+## 参与度指数
+
+`EI = β / (α + θ)`。仅在 Zustand 中 EMA 平滑。前 30 秒排除。
+
+## 专注度分类
+
+四状态机：空闲 → 预热（30s）→ 基线（15s，中位数 EI）→ 活跃（每 N 秒对比中位数与参考值）。
+
+## AI 管线
+
+FFT 输出 → 频带功率向量 → IndexedDB 帧 → LLM 上下文 → 流式响应（推理/证据/建议/说明）。
+
+详见 [AI 集成参考](ai-integration)。

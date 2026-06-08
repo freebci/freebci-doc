@@ -1,0 +1,41 @@
+---
+sidebar_position: 4
+sidebar_label: 'AI 集成'
+---
+
+# AI 集成
+
+OpenAI 兼容接口的 LLM 集成，用于 EEG 分析。
+
+## 支持的供应商
+
+| 供应商 | 基础 URL | 认证 |
+|---|---|---|
+| OpenAI | `api.openai.com/v1` | API Key |
+| DeepSeek | `api.deepseek.com/v1` | API Key |
+| Ollama | `localhost:11434/v1` | 无 |
+| 自定义 | 你的 URL | 视情况 |
+
+## 工作原理
+
+1. 五频段特征帧记录到 IndexedDB（每 0.5 秒）
+2. 用户问题 + 近期帧 → LLM 提示词
+3. 流式响应 → 解析为推理/证据/建议/说明
+
+## 五频段特征录制
+
+必须在设置页面开启。记录 δ,θ,α,β,γ 向量到 IndexedDB。每个对话有独立的数据库。
+
+## 数据持久化
+
+IndexedDB，保留 10 分钟。写入统计：帧数 / 待处理 / 超时。
+
+## 本地回退
+
+无 API Key 且非本地服务时 → 基础频带统计，无 AI 解读。
+
+## 对话导出/导入
+
+JSON 包包含：清单、帧（JSONL）、对话元数据。导入恢复至 IndexedDB。
+
+详见 [会话管理](../sessions)。

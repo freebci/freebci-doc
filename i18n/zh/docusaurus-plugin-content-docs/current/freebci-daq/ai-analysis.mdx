@@ -1,0 +1,47 @@
+---
+sidebar_position: 6
+sidebar_label: 'AI 分析'
+---
+
+# 5. AI 分析
+
+> 接入 OpenAI 兼容的大语言模型，分析五频段 EEG 特征。
+
+## 开启录制
+
+AI 分析需要开启五频段特征录制。在设置页面将 **记录五频段特征** 切换为 ON，然后开始采集。数据帧自动保存到 IndexedDB。
+
+## 选择模型供应商
+
+| 供应商 | 基础 URL | 需要 API Key？ |
+|---|---|---|
+| OpenAI | `api.openai.com/v1` | 是 |
+| DeepSeek | `api.deepseek.com/v1` | 是 |
+| Ollama | `localhost:11434/v1` | 否（本地） |
+| 自定义 | 你的 URL | 视情况 |
+
+点击 **测试模型** 验证连接。
+
+## 提问
+
+输入自然语言问题。示例："近期的 EEG 看起来是紧张还是放松？"/"过去 3 分钟我是否专注？"/"对比前后半段的 Alpha/Beta 比值。"点击 **回答问题** — 结果实时流式返回。
+
+响应分为四个部分：**推理过程** → **证据** → **建议** → **注意事项**。
+
+## 本地方案（Ollama）
+
+```bash
+ollama pull llama3
+ollama serve
+```
+
+配置供应商 "Ollama"，模型 "llama3"，API Key 留空。所有数据本地处理。
+
+## 工作原理
+
+仅将预计算的频带功率值（δ,θ,α,β,γ）发送给 LLM。原始 250 Hz 波形样本从不上传。
+
+## 接下来
+
+→ [管理 AI 对话和录制](sessions)
+→ [阅读完整的 AI 集成参考](reference/ai-integration)
