@@ -1,0 +1,249 @@
+---
+sidebar_position: 9
+sidebar_label: 'AI Pipeline'
+---
+
+# 8. AI Pipeline
+
+> Goal: Understand how five-band EEG features are recorded to IndexedDB, retrieved as LLM context, and streamed back as structured analysis.
+
+## Architecture
+
+```
+FFT Output (every 0.5s)
+  │
+  ├──→ Band powers (δ, θ, α, β, γ)
+  │
+  ├──→ writeFeatureFrame() → IndexedDB (persistent)
+  │
+  └──→ [User asks a question]
+            │
+            ├──→ getActiveAiFrames() → read from IndexedDB
+            ├──→ bucketBandFrames() + summarizeBandFrames()
+            ├──→ build prompt with context
+            ├──→ LLM API (streaming)
+            └──→ parse response → Reasoning / Evidence / Suggestions / Notes
+```
+
+## Files
+
+| File | Role |
+|---|---|
+| `src/ai/agentPipeline.ts` | Top-level orchestration: assemble frames, call LLM, parse output |
+| `src/ai/protocol.ts` | Zod schemas for band feature frames, analysis output, conversation meta |
+| `src/ai/indexedDb.ts` | IndexedDB CRUD: write frames, read frames, conversation lifecycle |
+| `src/ai/conversationRuntime.ts` | Active conversation state, frame buffering |
+| `src/ai/bandStats.ts` | Bucket frames by time window, detect anomalies |
+| `src/ai/bandFeatures.ts` | Normalize band values, compute band ratios |
+| `src/ai/fiveBandInference.ts` | Focus inference from band power trends |
+| `src/ai/modelProvider.ts` | OpenAI-compatible LLM client factory |
+| `src/ai/modelPresets.ts` | Preconfigured provider URLs and model IDs |
+| `src/ai/questionIntent.ts` | Parse user question to determine analysis scope |
+| `src/ai/naturalReport.ts` | Convert structured analysis to human-readable text |
+| `src/ai/zipBundle.ts` | JSON export/import of conversation bundles |
+| `src/store/aiStore.ts` | Zustand store for AI state |
+
+## Step 1: Recording Feature Frames
+
+When streaming starts with five-band recording enabled:
+
+```typescript
+// Every 0.5s (FFT hop), a BandFeatureFrame is created:
+interface BandFeatureFrameV1 {
+  timestampMs: number;
+  bandPowers: {
+    delta: number;
+    theta: number;
+    alpha: number;
+    beta: number;
+    gamma: number;
+  };
+  channelName: string;
+  bindingId: string;
+}
+```
+
+Each frame is validated with Zod (`validateBandFeatureFrame`) and written to IndexedDB:
+
+```typescript
+// src/ai/indexedDb.ts (simplified)
+async function appendFrame(db: IDBDatabase, frame: BandFeatureFrameV1): Promise<void> {
+  const tx = db.transaction(STORE_FRAMES, 'readwrite');
+  const store = tx.objectStore(STORE_FRAMES);
+  store.add(frame);
+  await transactionDone(tx);
+}
+```
+
+## Step 2: IndexedDB Schema
+
+**Database**: `eeg-ai-conversation-{conversationId}`
+
+| Object Store | Key | Contents |
+|---|---|---|
+| `bandFeatureFrames` | auto-increment | `BandFeatureFrameV1` records |
+| `conversationMeta` | `"meta"` | `ConversationMetaV1` record |
+
+**Retention**: Frames older than 10 minutes are trimmed on write.
+
+```typescript
+const RETENTION_MS = 10 * 60 * 1000; // 10 minutes
+```
+
+Each conversation gets its own IndexedDB database (not just a store), enabling clean separation between recording sessions.
+
+## Step 3: Retrieving Context for LLM
+
+When the user clicks "Answer question":
+
+```typescript
+// src/ai/agentPipeline.ts (simplified)
+async function runAnalysis(request: AiAnalysisRequestV1) {
+  // 1. Get recent frames from IndexedDB
+  const frames = await getActiveAiFrames(request.conversationId, request.timeRange);
+
+  // 2. Bucket and summarize for the LLM context window
+  const buckets = bucketBandFrames(frames, DEFAULT_CONTEXT_BUCKET_MS);
+  const summary = summarizeBandFrames(buckets);
+
+  // 3. Detect anomalies for richer context
+  const anomalies = detectBandAnomalies(buckets);
+
+  // 4. Build the prompt
+  const prompt = buildPrompt({
+    userGoal: request.userGoal,
+    bandSummary: summary,
+    anomalies,
+    timeRange: request.timeRange,
+  });
+
+  // 5. Call the LLM
+  const model = createLanguageModel(useAiStore.getState().modelConfig);
+  const stream = await model.streamText({ prompt });
+
+  // 6. Parse and display results
+  for await (const chunk of stream) {
+    // accumulate streaming text, parse sections
+  }
+}
+```
+
+## Step 4: Model Provider Abstraction
+
+**File**: `src/ai/modelProvider.ts`
+
+Uses `@ai-sdk/openai-compatible` (Vercel AI SDK) for a unified interface across OpenAI, DeepSeek, Ollama, and custom endpoints:
+
+```typescript
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+
+export function createLanguageModel(config: AiModelConfig) {
+  const provider = createOpenAICompatible({
+    name: config.provider,
+    baseURL: config.baseUrl,
+    apiKey: config.apiKey || undefined,
+  });
+
+  return provider.chat(config.modelId, {
+    temperature: config.temperature,
+  });
+}
+```
+
+### Adding a New Provider
+
+Edit `src/ai/modelPresets.ts`:
+
+```typescript
+export const MODEL_PRESETS = [
+  { id: 'openai',    name: 'OpenAI',   baseUrl: 'https://api.openai.com/v1' },
+  { id: 'deepseek',  name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1' },
+  { id: 'ollama',    name: 'Ollama',   baseUrl: 'http://localhost:11434/v1' },
+  { id: 'custom',    name: 'Custom',   baseUrl: '' },
+  { id: 'your-new',  name: 'YourNew',  baseUrl: 'https://your.api.com/v1' }, // ← add here
+];
+```
+
+Add translations for the provider name in `src/i18n.ts`.
+
+## Step 5: Response Parsing
+
+The LLM stream is parsed into four sections for structured display:
+
+```
+[REASONING]
+The alpha band shows steady increase over the last 60 seconds...
+
+[EVIDENCE]
+- Mean alpha: 12.3 µV² (↑23% vs baseline)
+- Beta/Alpha ratio: 0.42 (below engagement threshold)
+
+[SUGGESTIONS]
+- The subject appears to be moving into a relaxed state
+- Consider a focus-breathing exercise to re-engage
+
+[NOTES]
+- Confidence: moderate
+- Limited by single-channel analysis
+```
+
+**File**: `src/ai/naturalReport.ts` — converts the structured `AiAnalysisOutputV1` into readable text.
+
+## Step 6: Focus Inference (AI-powered)
+
+**File**: `src/ai/fiveBandInference.ts`
+
+The AI pipeline also performs rule-based focus inference without LLM calls:
+
+```typescript
+export function getFocusInference(
+  bandMeanMap: Map<BandMetric, number>,
+  alertThreshold: number,
+): { focused: boolean; confidence: number } {
+  const beta = bandMeanMap.get('beta') ?? 0;
+  const alpha = bandMeanMap.get('alpha') ?? 0;
+  const theta = bandMeanMap.get('theta') ?? 0;
+  const ei = beta / (alpha + theta);
+
+  return {
+    focused: ei > alertThreshold,
+    confidence: Math.min(1, Math.max(0, (ei - alertThreshold) / alertThreshold)),
+  };
+}
+```
+
+This runs locally (no API call) and feeds into the focus classification on the Algorithms page.
+
+## Conversation Export/Import
+
+**File**: `src/ai/zipBundle.ts`
+
+```typescript
+// Export: bundle conversation into a JSON archive
+export async function createStoredZip(conversationId: string): Promise<Uint8Array> {
+  const meta = await readMeta(db);
+  const frames = await readAllFrames(db);
+  // Create a zip-like bundle with manifest.json, frames.jsonl, meta.json
+  return bundle;
+}
+
+// Import: restore a conversation from a JSON bundle
+export async function readStoredZip(bundle: Uint8Array): Promise<{
+  meta: ConversationMetaV1;
+  frames: BandFeatureFrameV1[];
+}> {
+  // Parse the bundle and return frames + meta
+}
+```
+
+## Common Mistakes
+
+1. **Not enabling five-band recording**: AI analysis returns "No frames available" if recording is off.
+2. **Expecting results before the FFT window fills**: First frame appears after 2 seconds of streaming.
+3. **Sending raw EEG to the LLM**: Only pre-computed band power values are sent, not raw 250 Hz samples.
+4. **Not handling API errors gracefully**: Model timeouts, rate limits, and CORS issues should show user-friendly messages.
+5. **IndexedDB transaction conflicts**: Write operations must be properly sequenced to avoid `transaction aborted` errors.
+
+## Next
+
+→ [Add translations and theme customizations](/docs/freebci-daq/dev/i18n-and-theme)

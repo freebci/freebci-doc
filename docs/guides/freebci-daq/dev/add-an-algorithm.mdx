@@ -1,0 +1,152 @@
+---
+sidebar_position: 5
+sidebar_label: 'Add an Algorithm'
+---
+
+# 4. Add an Algorithm
+
+> Goal: Write a new EEG metric formula, wire it into the FFT analysis loop, smooth the result in Zustand, and display it on a chart.
+
+## Scenario
+
+You want to add an **Alpha/Theta Ratio** (relaxation index) that displays alongside the existing Engagement Index (Beta / (Alpha + Theta)).
+
+## Step 1: Write the Algorithm Function
+
+Create `src/algorithms/relaxationIndex.ts`:
+
+```typescript
+/*
+ * Relaxation Index = α / (α + β)
+ *
+ * Higher values → more relaxed (alpha dominant)
+ * Lower values → more alert (beta dominant)
+ */
+import type { EegBandPowers } from '../types/eeg';
+
+export function calculateRelaxationIndex(bandPowers: EegBandPowers): number | null {
+  const denominator = bandPowers.alpha + bandPowers.beta;
+  if (denominator <= 0) return null;
+  return bandPowers.alpha / denominator;
+}
+```
+
+### Algorithm File Conventions
+
+- Place in `src/algorithms/` — one function per file
+- Include the formula and a reference citation in the JSDoc comment
+- Return `null` when the denominator is zero or invalid
+- Input type: `EegBandPowers` (from `src/types/eeg.ts`)
+
+## Step 2: Call It in the Analysis Loop
+
+The EEG frequency analyzer (`src/analysis/eegFrequencyAnalysis.ts`) computes band powers from each FFT window. Find where `calculateEngagementIndex` is called and add your new function:
+
+```typescript
+import { calculateRelaxationIndex } from '../algorithms/relaxationIndex';
+
+// Inside the analysis loop (simplified):
+const bandPowers = computeBandPowers(fftOutput);
+const ei = calculateEngagementIndex(bandPowers);
+const ri = calculateRelaxationIndex(bandPowers);  // ← new
+
+// Push results to Zustand
+useEegStore.getState().pushEngagementResult({
+  timestamp: Date.now(),
+  ei,
+  ri,           // ← add to the result type
+  bandPowers,
+});
+```
+
+### Update the Result Type
+
+In `src/types/eeg.ts`, add the new field:
+
+```typescript
+export interface EngagementResult {
+  timestamp: number;
+  ei: number | null;
+  ri: number | null;          // ← new
+  bandPowers: EegBandPowers;
+}
+```
+
+## Step 3: Add EMA Smoothing in Zustand
+
+Open `src/store/eegStore.ts`. The store maintains a `smoothEngagementResults` array with EMA-smoothed values.
+
+Find where a new result is processed and add SMA/EMA for your metric:
+
+```typescript
+// Inside the store action that processes new results:
+const prev = state.smoothEngagementResults.at(-1);
+const prevRI = prev?.ri ?? rawResult.ri;
+
+const smoothedRI = rawResult.ri !== null && prevRI !== null
+  ? EEG_ENGAGEMENT_EMA_ALPHA * rawResult.ri + (1 - EEG_ENGAGEMENT_EMA_ALPHA) * prevRI
+  : rawResult.ri ?? prevRI;
+```
+
+The EMA smoothing factor (`EEG_ENGAGEMENT_EMA_ALPHA`) is configurable via `VITE_EMA_ALPHA` or the Advanced Tuning panel.
+
+## Step 4: Display on the Trend Chart
+
+The `AlgorithmTrendPanel` component (`src/components/AlgorithmTrendPanel.tsx`) renders the EI trend as an SVG line chart. Add a second line for your metric:
+
+```tsx
+// Inside the SVG rendering (simplified):
+const riPoints = results
+  .filter(r => r.ri !== null)
+  .map(r => ({ x: scaleX(r.timestamp), y: scaleY(r.ri!) }));
+
+// Draw relaxation index as a green dashed line
+<path
+  d={lineGenerator(riPoints)}
+  stroke="var(--color-success)"
+  strokeWidth={1.5}
+  strokeDasharray="4 3"
+  fill="none"
+/>
+```
+
+Add a legend entry:
+
+```tsx
+<text fill="var(--color-success)" fontSize={10}>
+  Relaxation Index (α / (α+β))
+</text>
+```
+
+## Step 5: Verify
+
+```bash
+npm run typecheck     # validates type changes
+npm run test:unit     # existing tests still pass
+
+# Start dev server, connect hardware, check the chart shows your new line
+npm run dev
+```
+
+## Pattern Summary
+
+| Step | File | What to Do |
+|---|---|---|
+| 1. Formula | `src/algorithms/yourMetric.ts` | Pure function: band powers → number |
+| 2. Integration | `src/analysis/eegFrequencyAnalysis.ts` | Call your function in the FFT output handler |
+| 3. Smoothing | `src/store/eegStore.ts` | EMA-smooth the result, push to array |
+| 4. Display | `src/components/YourPanel.tsx` | Subscribe to store, render SVG/Canvas |
+| 5. i18n | `src/i18n.ts` | Add labels for the new UI elements |
+
+## Adding Configurability
+
+If your algorithm needs a tunable parameter:
+
+1. Add a `VITE_YOUR_PARAM` to `.env.example`
+2. Resolve it in `src/config/eeg.ts` using the same `resolveNumber` pattern
+3. Expose it in the Advanced Tuning panel (`src/components/SystemPanel.tsx`)
+4. Document in `TUNING.md`
+
+## Next
+
+→ [Understand the serial protocol internals](/docs/freebci-daq/dev/serial-protocol)

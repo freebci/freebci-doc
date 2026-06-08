@@ -1,0 +1,147 @@
+---
+sidebar_position: 4
+sidebar_label: 'Add a Panel'
+---
+
+# 3. Add a Panel
+
+> Goal: Create a new React component, register it in `App.tsx`, add i18n translations, and subscribe to data.
+
+## Scenario
+
+You want to add a **"Latest EI Value"** card to the Live page that shows the current Engagement Index in large text.
+
+## Step 1: Create the Component
+
+Create `src/components/LatestEICard.tsx`:
+
+```tsx
+import { useEegStore } from '../store/eegStore';
+import type { Locale } from '../i18n';
+import { t } from '../i18n';
+import { Card, CardHeader, CardBody } from './ui';
+
+interface LatestEICardProps {
+  locale: Locale;
+}
+
+export function LatestEICard({ locale }: LatestEICardProps) {
+  const smoothEI = useEegStore((s) => s.smoothEngagementResults.at(-1)?.ei ?? null);
+
+  return (
+    <Card>
+      <CardHeader
+        eyebrow="Realtime"
+        title="Latest EI"
+      />
+      <CardBody>
+        {smoothEI !== null ? (
+          <p className="font-mono text-[2rem] tabular text-ink">
+            {smoothEI.toFixed(3)}
+          </p>
+        ) : (
+          <p className="text-meta">{t(locale, 'analysis.waiting')}</p>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+```
+
+### Key Points
+
+- **`locale` prop**: Every panel receives `locale: Locale` for bilingual support.
+- **`useEegStore`**: Derives real-time data from Zustand. The selector `s.at(-1)` gets the latest array element.
+- **`Card / CardHeader / CardBody`**: Reusable primitives from `src/components/ui/`. Always use these for visual consistency.
+- **`t(locale, key)`**: Avoids hardcoded English strings. If the key doesn't exist yet, add it next.
+
+## Step 2: Add i18n Keys
+
+Open `src/i18n.ts`. Find the `en-US` section and add:
+
+```typescript
+'latestEi.eyebrow': 'Realtime',
+'latestEi.title': 'Latest EI',
+```
+
+Find the `zh-CN` section and add:
+
+```typescript
+'latestEi.eyebrow': '实时',
+'latestEi.title': '最新 EI',
+```
+
+Then update the component to use them:
+
+```tsx
+<CardHeader
+  eyebrow={t(locale, 'latestEi.eyebrow')}
+  title={t(locale, 'latestEi.title')}
+/>
+```
+
+TypeScript will catch missing or misspelled keys — `TranslationKey` is a union of all valid key strings.
+
+## Step 3: Register in App.tsx
+
+Open `src/App.tsx`. Import your component at the top:
+
+```typescript
+import { LatestEICard } from './components/LatestEICard';
+```
+
+Find the `activePage === 'live'` block and insert your card:
+
+```tsx
+{activePage === 'live' && (
+  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <div className="flex min-w-0 flex-col gap-4">
+      <LatestEICard locale={locale} />    {/* ← new card */}
+      <LiveWindowControlPanel locale={locale} />
+      <BrainHeatmapPanel locale={locale} />
+      {/* ... existing panels ... */}
+    </div>
+    <AiAnalysisSidebar locale={locale} ... />
+  </div>
+)}
+```
+
+### Placement Notes
+
+- The Live page has a **two-column grid**: `xl:grid-cols-[minmax(0,1fr)_22rem]`
+- `min-w-0` is critical on the left column to prevent flex child overflow in Tailwind
+- The AI sidebar is `xl:sticky` — it stays in view while the left column scrolls
+
+## Step 4: Verify
+
+```bash
+npm run typecheck    # catches import errors, missing i18n keys
+npm run dev          # open http://localhost:5173 → Live tab
+```
+
+If `npm test` passes, your panel is correctly integrated.
+
+## Pattern Reference: How Existing Panels Subscribe to Data
+
+| Panel | Data Source | Pattern |
+|---|---|---|
+| `AlgorithmTrendPanel` | `useEegStore(s => s.smoothEngagementResults)` | Zustand selector |
+| `RawWaveformPanel` | `rawWaveformBus.copyLatest()` | Observer bus + `requestAnimationFrame` |
+| `BrainHeatmapPanel` | `useEegStore(s => s.bandPowerHistory)` | Zustand selector |
+| `AiAnalysisSidebar` | `useAiStore(s => s.analysisOutput)` | Zustand selector |
+
+**Rule of thumb**:
+
+- If your panel updates at display rate with 250 Hz data → use **observer bus**
+- If your panel updates at analysis rate (every 0.5s or slower) → use **Zustand**
+
+## Common Mistakes
+
+1. **Forgetting `locale` prop**: Every panel must accept `locale: Locale` and pass it to `t()`.
+2. **Hardcoding strings**: Always use `t(locale, 'key')`. If the key doesn't exist, add it to `i18n.ts`.
+3. **Not wrapping in `Card`**: All panels should use `Card / CardHeader / CardBody` for visual consistency.
+4. **Over-subscribing in Zustand**: Select only what you need. `useEegStore(s => s.smoothEngagementResults)` is good; `useEegStore()` is bad (re-renders on every state change).
+
+## Next
+
+→ [Add a custom algorithm to the analysis pipeline](/docs/freebci-daq/dev/add-an-algorithm)

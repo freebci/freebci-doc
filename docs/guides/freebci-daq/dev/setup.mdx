@@ -1,0 +1,93 @@
+---
+sidebar_position: 2
+sidebar_label: 'Project Setup'
+---
+
+# 1. Environment Setup
+
+> Goal: Clone the repo, install dependencies, start the dev server, and verify tests pass.
+
+## Clone & Install
+
+```bash
+git clone <repo-url> freebci-daq
+cd freebci-daq
+npm install
+```
+
+## Folder Layout (First Look)
+
+```
+freebci-daq/
+├── src/
+│   ├── ai/              # AI pipeline (OpenAI-compatible)
+│   ├── algorithms/      # Engagement index formula
+│   ├── analysis/        # FFT, IIR filter, lead-off detection
+│   ├── components/      # React panels & UI primitives
+│   │   └── ui/          # Button, Card, Field, StatusDot, etc.
+│   ├── config/          # EEG and serial constants
+│   ├── focus/           # Focus calibration state machine
+│   ├── hooks/           # useAcquisitionActions (serial state machine + refs)
+│   ├── serial/          # Web Serial adapter, protocol parser
+│   ├── state/           # Observer buses (rawWaveformBus, filteredWaveformBus)
+│   ├── store/           # Zustand stores (eeg, ai)
+│   ├── transport/       # Transport abstraction layer
+│   ├── types/           # TypeScript type definitions
+│   └── utils/           # Helpers (tuningStorage, etc.)
+├── tests/               # Vitest test files
+├── docs/                # User docs + dev docs (you're here)
+├── TUNING.md            # Parameter tuning guide
+├── AGENTS.md            # Contributor notes
+└── .env.example          # Environment variable template
+```
+
+## Start the Dev Server
+
+```bash
+npm run dev
+# → http://localhost:5173
+```
+
+The app is a **static SPA** — no backend, no SSR. Vite serves the React app on port 5173.
+
+## Run Tests
+
+```bash
+npm test              # typecheck + unit tests (23 files, 162 tests)
+npm run test:unit     # unit tests only
+npm run typecheck     # tsc --noEmit (src/ only, excludes tests/)
+```
+
+### Run a Single Test
+
+```bash
+npx vitest run tests/serialEegProtocol.test.ts
+npx vitest run -t "parses a valid packet"
+```
+
+## Production Build
+
+```bash
+npm run build    # typecheck + vite build → dist/
+npm run preview  # serve dist/ locally on port 4173
+```
+
+## Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env for your hardware (see TUNING.md)
+```
+
+All `VITE_*` variables are inlined at build time. Values from `localStorage` (Advanced Tuning panel) override `.env` at runtime.
+
+## Verify Everything Works
+
+```bash
+npm test && npm run build
+# Expect: 23 test files pass, build succeeds with dist/ output
+```
+
+## Next
+
+→ [Follow one sample through the entire pipeline](/docs/freebci-daq/dev/architecture-tour)

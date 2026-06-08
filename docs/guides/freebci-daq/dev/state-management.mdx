@@ -1,0 +1,233 @@
+---
+sidebar_position: 7
+sidebar_label: 'State Management'
+---
+
+# 6. State Management
+
+> Goal: Understand the separation between Zustand (serializable UI state) and React refs (non-serializable Web API objects), and how the observer bus pattern feeds Canvas rendering at 60 fps.
+
+## The Boundary
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Zustand (useEegStore, useAiStore)                       │
+│  ─────────────────────────────────────                   │
+│  Serializable values:                                    │
+│    • stream state (idle/streaming/stalled)               │
+│    • acquisition status (ready/connecting/error)         │
+│    • band power history, smoothed EI trend               │
+│    • diagnostic log entries                              │
+│    • AI conversation metadata, model settings             │
+│                                                          │
+│  Can be: serialized to localStorage, inspected in        │
+│  React DevTools, used with selectors in any component     │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  React Refs (useAcquisitionActions)                      │
+│  ─────────────────────────────────────                   │
+│  Non-serializable Web API objects:                       │
+│    • SerialPort instance                                  │
+│    • ReadableStreamDefaultReader                          │
+│    • EegFrequencyAnalyzer instance                        │
+│    • FileSystemWritableFileStream                        │
+│    • EegProtocolParser instance                           │
+│                                                          │
+│  Cannot be: serialized, put in Zustand, or inspected     │
+│  in DevTools. Held in useRef() to survive re-renders.     │
+└─────────────────────────────────────────────────────────┘
+```
+
+## The Central Hook: useAcquisitionActions
+
+**File**: `src/hooks/useAcquisitionActions.ts`
+
+This hook is the **state machine** that owns all non-serializable objects and orchestrates the connection lifecycle:
+
+```typescript
+// Conceptual structure (simplified)
+function useAcquisitionActions(locale: Locale) {
+  const portRef = useRef<SerialPort | null>(null);
+  const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
+  const parserRef = useRef<EegProtocolParser | null>(null);
+  const analyzerRef = useRef<EegFrequencyAnalyzer | null>(null);
+  const fileRef = useRef<FileSystemWritableFileStream | null>(null);
+
+  async function connectSelectedDevice() {
+    const port = await navigator.serial.requestPort();
+    portRef.current = port;
+    // ... EEGRST, EEGCFG sequencing ...
+    useEegStore.getState().setStatus('ready');
+  }
+
+  async function startEegStream() {
+    parserRef.current = createParser();
+    analyzerRef.current = createAnalyzer();
+    // ... SW,START, reader loop ...
+    useEegStore.getState().setStream({ isStreaming: true });
+  }
+
+  return { connectSelectedDevice, startEegStream, disconnect, ... };
+}
+```
+
+### Why This Separation Matters
+
+| Put in Zustand? | `SerialPort` | `Reader` | `Analyzer` | `FileStream` |
+|---|---|---|---|---|
+| Can be `JSON.stringify`d? | No | No | No | No |
+| Survives page reload? | No | No | No | No |
+| Can have async methods? | Yes | Yes | Yes | Yes |
+| Should cause React re-renders? | Never | Never | Never | Never |
+
+The rule: **if it has a `.close()`, `.read()`, or any async lifecycle method, it goes in a ref.**
+
+## Zustand Patterns
+
+**Files**: `src/store/eegStore.ts`, `src/store/aiStore.ts`
+
+### Selecting Data
+
+```typescript
+// ✅ Good: select exactly what you need
+const status = useEegStore(s => s.status);
+
+// ✅ Good: derived selection
+const lastEI = useEegStore(s => s.smoothEngagementResults.at(-1)?.ei);
+
+// ❌ Bad: selects everything, re-renders on any change
+const entireStore = useEegStore();
+```
+
+### Writing Data
+
+```typescript
+// From inside a component:
+const pushResult = useEegStore(s => s.pushEngagementResult);
+
+// From outside React (ref callbacks, reader loops):
+useEegStore.getState().pushEngagementResult({ ... });
+```
+
+Use `getState()` when you're outside a React component — for example, inside the reader loop in `useAcquisitionActions` or in a `requestAnimationFrame` callback.
+
+### Store Structure
+
+```typescript
+interface EegStore {
+  // Stream state
+  stream: { isStreaming: boolean; isStarting: boolean; ... };
+  status: AcquisitionStatus;
+
+  // Analysis data
+  smoothEngagementResults: EngagementResult[];
+  bandPowerHistory: BandPowerEntry[];
+
+  // Diagnostics
+  diagnostics: DiagnosticEntry[];
+
+  // Actions
+  setStream: (s: StreamState) => void;
+  setStatus: (s: AcquisitionStatus) => void;
+  pushEngagementResult: (r: EngagementResult) => void;
+  pushDiagnostic: (d: DiagnosticEntry) => void;
+}
+```
+
+## Observer Bus Pattern
+
+**Files**: `src/state/waveformBus.ts`, `src/state/rawWaveformBus.ts`, `src/state/filteredWaveformBus.ts`
+
+### Why
+
+250 Hz data → 250 Zustand updates per second → 250 React re-renders per second → **unusable**.
+
+### How
+
+The bus is a simple ring buffer with a push/copy interface:
+
+```typescript
+export interface WaveformBus {
+  push(value: number, channelName?: string, quality?: WaveformSampleQuality): void;
+  copyLatest(out: Float32Array, requestedCount: number, channelName?: string): number;
+  reset(): void;
+  getCapacity(): number;
+  getWriteIndex(channelName?: string): number;
+  getChannelNames(): string[];
+}
+```
+
+- **`push`**: Fast — just `buf[idx % CAPACITY] = value; idx++`
+- **`copyLatest`**: Copies the most recent N samples into a pre-allocated `Float32Array`
+- **Per-channel**: Each channel gets its own ring buffer via `Map<string, Float32Array>`
+
+### Rendering Loop
+
+```typescript
+// Inside WaveformPanel (simplified)
+const samples = new Float32Array(maxSamples);
+
+function draw() {
+  const count = rawWaveformBus.copyLatest(samples, windowWidth, 'ch0');
+
+  // Canvas 2D drawing (no React involved)
+  ctx.clearRect(0, 0, width, height);
+  for (let i = 0; i < count; i++) {
+    const x = (i / count) * width;
+    const y = scaleY(samples[i]);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+```
+
+This runs at **60 fps** (display refresh rate), reading the latest samples from the bus each frame. React is never involved in the per-frame rendering.
+
+### Creating a New Bus
+
+If you need a new data bus (e.g., for a custom signal):
+
+```typescript
+// src/state/myCustomBus.ts
+import { createWaveformBus } from './waveformBus';
+export const myCustomBus = createWaveformBus();
+```
+
+Then push to it from your data source and read from it in your Canvas component.
+
+## Putting It All Together
+
+```
+Serial port (ref)
+  │ reader.read()
+  ▼
+Parser (ref)
+  │ feedChunk()
+  ▼
+Batch handler (ref callback)
+  ├── rawWaveformBus.push()      → requestAnimationFrame → Canvas
+  ├── filter (ref) → filteredWaveformBus.push()  → Canvas
+  ├── analyzer (ref) → bandPowers
+  │     │
+  │     └── useEegStore.getState().pushEngagementResult()  → Zustand
+  │           │
+  │           └── React components re-render when selected values change
+  │
+  └── CSV writer (ref) → file on disk
+```
+
+## Common Mistakes
+
+1. **Putting SerialPort in Zustand**: Will break because it can't be serialized. Use a ref.
+2. **Calling `getState()` inside a component**: Use the hook `useEegStore(selector)` instead. `getState()` is for non-React code.
+3. **Pushing 250 Hz to Zustand**: Will kill performance. Use the observer bus for high-frequency data.
+4. **Forgetting to `.dispose()` handles**: ElementHandle, JSHandle, etc. from Puppeteer tests.
+5. **Storing derived data**: Don't store data in Zustand that can be computed from other Zustand values. Use selectors.
+
+## Next
+
+→ [Understand the IIR filter pipeline](/docs/freebci-daq/dev/iir-filter)

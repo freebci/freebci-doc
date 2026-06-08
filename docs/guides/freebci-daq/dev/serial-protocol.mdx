@@ -1,0 +1,210 @@
+---
+sidebar_position: 6
+sidebar_label: 'Serial Protocol'
+---
+
+# 5. Serial Protocol
+
+> Goal: Understand the EEGRST/EEGCFG/SW,START initialization sequence and the binary packet parser internals.
+
+## Files Involved
+
+| File | Role |
+|---|---|
+| `src/serial/webSerialAdapter.ts` | `navigator.serial` wrapper: open, close, read, write |
+| `src/serial/serialInitialization.ts` | EEGRST + EEGCFG command sequencing |
+| `src/serial/serialAcquisitionSwitch.ts` | SW,START / SW,STOP commands |
+| `src/serial/serialHardwareConfig.ts` | Hardware parameter encoding |
+| `src/serial/serialProtocolCore.ts` | Sequence number math (wrap-around, gap detection) |
+| `src/serial/serialEegProtocol.ts` | Binary frame parser (int24 decoding) |
+| `src/serial/serialConnectionSession.ts` | Manages the reader loop and stream lifecycle |
+| `src/config/serial.ts` | Baud rate, ACK timeouts, stall timeout |
+
+## Connection Sequence
+
+```
+Browser                          Device
+   │                                │
+   ├─ requestPort() ───────────────▶│  Navigator shows device chooser
+   │                                │
+   ├─ port.open({ baudRate: 921600 })─▶
+   │                                │
+   ├─ EEGRST ──────────────────────▶│  Reset firmware state
+   │◀──────── ACK ─────────────────┤  (2s timeout)
+   │                                │
+   ├─ EEGCFG(params) ──────────────▶│  Configure hardware
+   │◀──────── ACK ─────────────────┤  (2s timeout)
+   │                                │
+   ├─ SW,START ────────────────────▶│  Begin sampling
+   │◀──────── ACK ─────────────────┤  (2s timeout)
+   │                                │
+   │◀──── binary packets ──────────┤  250 Hz int24 samples
+   │◀──── binary packets ──────────┤
+   │◀──── binary packets ──────────┤
+```
+
+### Timeouts
+
+```typescript
+// src/config/serial.ts
+export const EEG_SERIAL_RESET_ACK_TIMEOUT_MS = 2_000;
+export const EEG_SERIAL_CONFIG_ACK_TIMEOUT_MS = 2_000;
+export const EEG_SERIAL_SWITCH_ACK_TIMEOUT_MS = 2_000;
+export const EEG_SERIAL_STALLED_TIMEOUT_MS = 2_000;
+```
+
+If any ACK times out, the connection is aborted and a diagnostic error is logged.
+
+## Sequence Number Handling
+
+**File**: `src/serial/serialProtocolCore.ts`
+
+Each binary packet carries a sequence number. The parser uses it to:
+
+### Gap Detection
+
+```typescript
+export function countForwardSerialDeviceSeqGap(
+  expectedSeq: number,
+  actualSeq: number,
+): number {
+  const gap = (actualSeq - expectedSeq) >>> 0;  // unsigned 32-bit
+  if (gap === 0 || gap > 0x7fff_ffff) return 0;  // ignore wrap-around
+  return gap;
+}
+```
+
+A non-zero gap means packets were dropped. This is logged in diagnostics:
+
+> "Serial packet sequence jumped; N packets were missed."
+
+### Wrap-around
+
+Sequence numbers are `uint32` and wrap at `0xFFFFFFFF`:
+
+```typescript
+export function getNextSerialDeviceSeq(seq: number): number {
+  return (seq + 1) >>> 0;
+}
+```
+
+## Binary Frame Parser
+
+**File**: `src/serial/serialEegProtocol.ts`
+
+The parser reads from the serial stream looking for frame boundaries. Each frame contains:
+
+```
+[header/sync] [seq_num] [payload: int24 × N_channels] [checksum/footer]
+```
+
+### Int24 Decoding
+
+EEG samples are encoded as 24-bit signed integers (3 bytes per sample). The parser converts these to JavaScript numbers:
+
+```typescript
+// int24 → number (simplified)
+function decodeInt24(bytes: Uint8Array, offset: number): number {
+  const b0 = bytes[offset];
+  const b1 = bytes[offset + 1];
+  const b2 = bytes[offset + 2];
+  let value = (b0 << 16) | (b1 << 8) | b2;
+  // Sign extension for negative values
+  if (value & 0x800000) value |= 0xFF000000;
+  return value;
+}
+```
+
+### Output
+
+After parsing a complete frame, the parser produces:
+
+```typescript
+interface ParsedBatch {
+  samples: number[][];    // samples[channelIndex][sampleIndex]
+  packetSeq: number;
+  invalid?: boolean;       // set if frame was malformed
+}
+```
+
+Invalid packets are counted but not forwarded to the data pipeline.
+
+## How to Adapt for Different Hardware
+
+If your EEG device uses a different protocol:
+
+1. **Create a new parser** in `src/serial/` — follow `serialEegProtocol.ts` as a template
+2. Wire it in `src/hooks/useAcquisitionActions.ts` — replace the parser instantiation
+3. Update `serialHardwareConfig.ts` if the config command format differs
+4. Adjust baud rate in `src/config/serial.ts` if needed
+5. Update diagnostic messages in `src/i18n.ts` for new error conditions
+
+### Parser Interface
+
+```typescript
+interface EegProtocolParser {
+  feedChunk(chunk: Uint8Array): ParsedBatch[];
+  reset(): void;
+}
+```
+
+Your parser must implement `feedChunk` — the reader loop calls this with raw bytes from the serial port. Return an array of parsed batches (may be empty if no complete frame was found).
+
+## Reader Loop Lifecycle
+
+**File**: `src/serial/serialConnectionSession.ts`
+
+The reader loop runs while streaming is active:
+
+```typescript
+while (streamActive) {
+  const { value, done } = await reader.read();
+  if (done) break;
+
+  const batches = parser.feedChunk(value);
+  for (const batch of batches) {
+    if (batch.invalid) {
+      diagnostics.logInvalidPacket();
+      continue;
+    }
+    // Check sequence gaps
+    const gap = countForwardSerialDeviceSeqGap(lastSeq, batch.packetSeq);
+    if (gap > 0) diagnostics.logPacketGap(gap);
+
+    // Push to waveform buses
+    for (const [ch, samples] of batch.samples.entries()) {
+      for (const s of samples) {
+        rawWaveformBus.push(s, `ch${ch}`);
+      }
+    }
+
+    // Feed the filter → FFT pipeline
+    handleBatch(batch);
+  }
+}
+```
+
+### Stall Detection
+
+If no valid batch arrives for `EEG_SERIAL_STALLED_TIMEOUT_MS` (2 seconds), the stream state changes to **STALLED**. When data resumes, it recovers automatically.
+
+## Adding Diagnostics
+
+All diagnostic events go through `src/store/eegStore.ts`:
+
+```typescript
+useEegStore.getState().pushDiagnostic({
+  id: crypto.randomUUID(),
+  phase: 'Serial connection',    // or 'Data collection', 'Disconnect', 'Access revocation'
+  status: 'error',                // 'running' | 'success' | 'error' | 'info'
+  message: 'Serial packet sequence jumped; 3 packets were missed.',
+  detail: `Expected seq ${expected}, got ${actual}`,
+  timestamp: Date.now(),
+});
+```
+
+Use `pushDiagnostic` to log events from your parser or reader loop. They appear in the diagnostics drawer and System page.
+
+## Next
+
+→ [Understand state management: Zustand vs. refs](/docs/freebci-daq/dev/state-management)

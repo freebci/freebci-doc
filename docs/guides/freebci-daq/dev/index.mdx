@@ -1,0 +1,41 @@
+---
+sidebar_position: 1
+sidebar_label: 'Overview'
+---
+
+# Developer Guide
+
+> Step-by-step coding tutorials for extending FreeBCI DAQ.
+
+| # | Tutorial | What you'll build |
+|---|---|---|
+| 1 | [Environment Setup](/docs/freebci-daq/dev/setup) | Clone → `npm install` → `npm run dev` → run tests |
+| 2 | [Architecture Tour](/docs/freebci-daq/dev/architecture-tour) | Follow one sample through the entire pipeline |
+| 3 | [Add a Panel](/docs/freebci-daq/dev/add-a-panel) | New React component → register in App.tsx → add i18n |
+| 4 | [Add an Algorithm](/docs/freebci-daq/dev/add-an-algorithm) | Write a formula → hook into the analyzer → display on a chart |
+| 5 | [Serial Protocol](/docs/freebci-daq/dev/serial-protocol) | EEGRST / EEGCFG / SW,START sequencing, binary parser internals |
+| 6 | [State Management](/docs/freebci-daq/dev/state-management) | Zustand vs. refs boundary, observer bus pattern, waveform rendering |
+| 7 | [IIR Filter Pipeline](/docs/freebci-daq/dev/iir-filter) | Butterworth filter implementation, rebuild triggers, window clearing |
+| 8 | [AI Pipeline](/docs/freebci-daq/dev/ai-pipeline) | Five-band recording, IndexedDB schema, LLM call flow |
+| 9 | [i18n & Theming](/docs/freebci-daq/dev/i18n-and-theme) | Add translation keys, Tailwind v4 theme variables, Card primitives |
+| 10 | [Testing](/docs/freebci-daq/dev/testing) | Vitest patterns, `fake-indexeddb`, mocking Web Serial |
+| 11 | [Build & Deploy](/docs/freebci-daq/dev/build-and-deploy) | `vite build`, `dist/` static hosting, HTTPS requirement |
+
+## Reference
+
+| Doc | Covers |
+|---|---|
+| [Developer Reference](/docs/freebci-daq/reference/developer-guide) | Architecture overview, directory map, coding conventions |
+| [Data Pipeline](/docs/freebci-daq/reference/data-pipeline) | Full pipeline diagram and component relationships |
+| [Configuration](/docs/freebci-daq/reference/configuration) | `VITE_*` environment variables and tuning parameters |
+
+## Prerequisites
+
+Before starting:
+
+- Node.js 18+ installed
+- Chrome or Edge for Web Serial testing
+- The project cloned and `npm install` completed
+- Familiarity with React, TypeScript, and Vite
+
+Start with [Environment Setup](/docs/freebci-daq/dev/setup) if you haven't already.

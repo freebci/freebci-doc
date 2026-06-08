@@ -1,0 +1,86 @@
+---
+sidebar_position: 7
+sidebar_label: 'Developer Guide'
+---
+
+# Developer Reference
+
+Architecture overview and coding conventions for FreeBCI DAQ.
+
+## Technology Stack
+
+React 18 + TypeScript + Vite 5, Zustand 4, fft.js 4, @ai-sdk/openai-compatible, Tailwind CSS v4, Zod v4.
+
+## Project Structure
+
+| Directory | Purpose |
+|---|---|
+| `src/ai/` | AI agent pipeline (OpenAI-compatible), IndexedDB, inference |
+| `src/algorithms/` | EI calculation |
+| `src/analysis/` | FFT, IIR filter, lead-off detection |
+| `src/components/` | React panels + UI primitives (`ui/`) |
+| `src/config/` | EEG and serial constants |
+| `src/focus/` | Focus calibration state machine |
+| `src/hooks/` | `useAcquisitionActions` (serial state machine + refs) |
+| `src/serial/` | Web Serial access, protocol parsing |
+| `src/state/` | Observer buses (`rawWaveformBus`, `filteredWaveformBus`) |
+| `src/store/` | Zustand stores (`eeg`, `ai`) |
+| `src/transport/` | Transport abstraction layer |
+
+## Key Architecture Principles
+
+### State Separation
+
+Zustand stores only serializable UI state. Non-serializable Web API objects (`SerialPort`, reader, `FileSystemWritableFileStream`, analyzers) are held in React refs inside `useAcquisitionActions()`.
+
+### Observer Buses for Waveforms
+
+250 Hz data bypasses React entirely. `rawWaveformBus` / `filteredWaveformBus` → `requestAnimationFrame` → Canvas.
+
+### No Router
+
+Tab-based navigation via `WorkspaceShell.tsx`. Active page persisted to `localStorage`.
+
+### Transport Abstraction
+
+`src/transport/` provides shared EEG frame protocol tools. Only `serial` transport is currently enabled.
+
+## Key Files
+
+| File | Purpose |
+|---|---|
+| `src/hooks/useAcquisitionActions.ts` | Central state machine, owns all refs |
+| `src/serial/serialEegProtocol.ts` | Binary packet parser (int24) |
+| `src/analysis/eegFrequencyAnalysis.ts` | FFT analyzer with sliding window |
+| `src/analysis/butterworthFilter.ts` | Biquad filter stages |
+| `src/algorithms/engagementIndex.ts` | EI = β / (α + θ) |
+| `src/focus/focusCalibration.ts` | Focus state machine |
+| `src/ai/agentPipeline.ts` | AI orchestration |
+| `src/i18n.ts` | 400+ bilingual translation keys |
+| `src/components/WaveformPanel.tsx` | Shared Canvas waveform renderer |
+| `src/components/WorkspaceShell.tsx` | 5-tab shell |
+
+## Commands
+
+```bash
+npm run dev          # Vite dev server
+npm run typecheck    # tsc --noEmit (src/ only)
+npm run test:unit    # vitest run
+npm test             # typecheck + unit tests
+npm run build        # typecheck + vite build → dist/
+npm run preview      # preview production build
+```
+
+## Adding a Panel
+
+1. Create component in `src/components/`, accept `locale: Locale`
+2. Add translation keys to `src/i18n.ts` (both zh-CN and en-US)
+3. Register in `src/App.tsx` under the appropriate `activePage` block
+4. Subscribe to Zustand or observer bus for data
+
+## Constraints
+
+- Web Serial only (no Bluetooth, no GATT)
+- Filter changes clear the 2s FFT window
+- EMA smoothing only in Zustand store layer
+- `dist/` is the production output — static files only

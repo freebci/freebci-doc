@@ -1,0 +1,208 @@
+---
+sidebar_position: 8
+sidebar_label: 'IIR Filter'
+---
+
+# 7. IIR Filter Pipeline
+
+> Goal: Understand how the Butterworth IIR filter is implemented, how coefficient recalculation works, and what happens when the user changes cutoff frequencies.
+
+## Architecture
+
+**Files**:
+
+| File | Role |
+|---|---|
+| `src/analysis/butterworthFilter.ts` | `Biquad` stage implementation, `CascadedScalarFilter` chain, coefficient formulas |
+| `src/analysis/eegFilters.ts` | `EegFilter` interface, `EegFilterChain` |
+| `src/analysis/filterRegistry.ts` | Factory for filter instances, default parameter lookup |
+| `src/components/FilterControlsPanel.tsx` | User-facing cutoff frequency inputs |
+
+## Biquad Filter Stage
+
+The filter is built from cascaded **Biquad** (two-pole, two-zero) stages using **Direct Form II** topology:
+
+```typescript
+// src/analysis/butterworthFilter.ts
+export class Biquad implements EegFilter {
+  private x1 = 0; private x2 = 0;  // input history
+  private y1 = 0; private y2 = 0;  // output history
+
+  constructor(
+    private readonly b0: number, private readonly b1: number,
+    private readonly b2: number, private readonly a1: number,
+    private readonly a2: number,
+  ) {}
+
+  processSample(x: number): number {
+    const y = this.b0 * x + this.b1 * this.x1 + this.b2 * this.x2
+            - this.a1 * this.y1 - this.a2 * this.y2;
+    // Shift delay line
+    this.x2 = this.x1; this.x1 = x;
+    this.y2 = this.y1; this.y1 = y;
+    return y;
+  }
+
+  reset(): void {
+    this.x1 = 0; this.x2 = 0;
+    this.y1 = 0; this.y2 = 0;
+  }
+}
+```
+
+### Why Direct Form II
+
+- **Memory efficient**: Stores 4 state variables per stage (x1, x2, y1, y2)
+- **Numerically stable** for the Butterworth coefficients used here
+- **Cascade-friendly**: Each stage's output feeds the next stage's input
+
+## 4th-Order Butterworth via Cascaded Biquads
+
+A 4th-order filter = **2 cascaded 2nd-order stages**:
+
+```typescript
+// src/analysis/butterworthFilter.ts (simplified)
+export class CascadedScalarFilter implements EegFilter {
+  constructor(private readonly stages: EegFilter[]) {}
+
+  processSample(value: number): number {
+    let output = value;
+    for (const stage of this.stages) {
+      output = stage.processSample(output);
+    }
+    return output;
+  }
+
+  reset(): void {
+    for (const stage of this.stages) {
+      stage.reset();
+    }
+  }
+}
+```
+
+The full filter chain for band-pass operation:
+
+```
+raw sample → [HP stage 1] → [HP stage 2] → [LP stage 1] → [LP stage 2] → filtered sample
+```
+
+## Coefficient Calculation
+
+Coefficients are computed using the **RBJ Audio EQ Cookbook** formulas:
+
+```typescript
+// High-pass biquad coefficients
+export function highPassBiquad(cutoffHz: number, sampleRateHz: number, q: number): Biquad {
+  const w0 = (2 * Math.PI * cutoffHz) / sampleRateHz;
+  const cosw = Math.cos(w0);
+  const sinw = Math.sin(w0);
+  const alpha = sinw / (2 * q);
+  const a0 = 1 + alpha;
+  // b0, b1, b2, a1, a2 derived from w0 and alpha...
+  return new Biquad(b0, b1, b2, a1, a2);
+}
+
+// Low-pass uses the same w0 but different coefficient formulas
+export function lowPassBiquad(cutoffHz: number, sampleRateHz: number, q: number): Biquad {
+  // Same structure, different coefficient derivation
+}
+```
+
+**Q factor**: For a Butterworth response, Q ≈ 0.707 (1/√2) per 2nd-order section. The cascaded stages use the appropriate Q values for 4th-order alignment.
+
+## EegFilter Interface
+
+```typescript
+// src/analysis/eegFilters.ts
+export interface EegFilter {
+  processSample(value: number): number;
+  reset(): void;
+}
+```
+
+Every filter in the pipeline — from a single biquad to the full cascaded chain — implements this interface. This makes filters **composable**: you can wrap, cascade, or swap them without changing the calling code.
+
+The `EegFilterChain` manages the full filter pipeline including coefficient rebuilding.
+
+## Filter Rebuild Triggers
+
+When the user changes cutoff frequencies in the Filter Controls panel:
+
+1. **New coefficients** are calculated via `highPassBiquad()` / `lowPassBiquad()`
+2. **A new `EegFilterChain`** is constructed with the updated stages
+3. **`reset()`** is called to clear all delay lines (x1, x2, y1, y2 → 0)
+4. **The 2-second FFT analysis window is cleared** — the old buffer contains samples filtered with different coefficients
+
+```typescript
+// Conceptual flow in filterRegistry / eegFrequencyAnalysis:
+function rebuildFilter(hpHz: number, lpHz: number) {
+  const stages = [
+    highPassBiquad(hpHz, 250, Q_VALUES[0]),
+    highPassBiquad(hpHz, 250, Q_VALUES[1]),
+    lowPassBiquad(lpHz, 250, Q_VALUES[0]),
+    lowPassBiquad(lpHz, 250, Q_VALUES[1]),
+  ];
+  const newFilter = new CascadedScalarFilter(stages);
+
+  // Clear the FFT window buffer (important!)
+  frequencyAnalyzer.clearWindow();
+
+  return newFilter;
+}
+```
+
+> **Important**: Never stitch together data from different filter states. The FFT window must be cleared on every filter change. Results resume once the new window fills (~2 seconds at 250 Hz).
+
+## Per-Sample Processing
+
+Each raw sample goes through the filter before entering the FFT window:
+
+```typescript
+// Inside the batch handler (simplified):
+for (const sample of batch.samples) {
+  const filtered = filter.processSample(sample);  // one call per sample
+  filteredWaveformBus.push(filtered, channelName); // to filtered waveform display
+  fftWindowBuffer.push(filtered);                  // to FFT analysis
+}
+```
+
+The filter is called **250 times per second per channel** — one `processSample()` call per raw sample. This is why the Direct Form II topology was chosen: minimal operations per sample (5 multiplies, 4 additions per biquad).
+
+## Adding a New Filter Type
+
+To add a different filter (e.g., Notch, Chebyshev):
+
+1. **Implement `EegFilter`** interface in a new file under `src/analysis/`:
+
+```typescript
+export class NotchFilter implements EegFilter {
+  reset(): void { /* clear state */ }
+  processSample(value: number): number { /* notch at 50/60 Hz */ }
+}
+```
+
+2. **Register in `filterRegistry.ts`**:
+
+```typescript
+export function createFilterById(id: string, params: FilterParams): EegFilter {
+  switch (id) {
+    case 'butterworth-4': return createButterworthFilter(params);
+    case 'notch-60':      return new NotchFilter(60, 250);
+    default: throw new Error(`Unknown filter: ${id}`);
+  }
+}
+```
+
+3. **Add UI controls** in `FilterControlsPanel.tsx` to select the filter type.
+
+## Common Mistakes
+
+1. **Not calling `reset()` after coefficient change**: Old delay line values produce a transient spike in output.
+2. **Not clearing the FFT window after filter change**: The old buffer contains data filtered with different coefficients.
+3. **Forgetting the sample rate is 250 Hz**: All `w0` calculations use `(2π * cutoff) / 250`.
+4. **Cascading without Q alignment**: Each 2nd-order stage in a 4th-order Butterworth needs a specific Q value for flat passband response.
+
+## Next
+
+→ [Understand the AI analysis pipeline](/docs/freebci-daq/dev/ai-pipeline)

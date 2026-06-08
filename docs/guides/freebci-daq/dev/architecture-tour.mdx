@@ -1,0 +1,188 @@
+---
+sidebar_position: 3
+sidebar_label: 'Architecture Tour'
+---
+
+# 2. Architecture Tour
+
+> Goal: Trace a single EEG sample from the USB cable to the rendered pixel on screen.
+
+## The Full Pipeline
+
+```
+USB → Web Serial → Binary Parser → rawWaveformBus → Canvas (Raw Waveform)
+                                      │
+                                      ├──→ Butterworth IIR → filteredWaveformBus → Canvas (Filtered)
+                                      │
+                                      └──→ FFT Analyzer (2s window)
+                                              │
+                                              ├──→ Band Powers → EI Trend (Zustand)
+                                              ├──→ Band Powers → Focus Classifier
+                                              ├──→ Band Powers → Brain Heatmap
+                                              └──→ Five-band Frames → IndexedDB → AI Agent
+```
+
+## Step 1: Serial Data Arrives
+
+**File**: `src/serial/serialEegProtocol.ts`
+
+The serial reader loop receives raw bytes from `navigator.serial`. The parser:
+
+1. Reads chunks from the serial port
+2. Looks for frame boundaries in the binary stream
+3. Extracts **int24** sample values per channel
+4. Validates packet sequence numbers to detect gaps
+
+```typescript
+// Simplified: what the parser produces per batch
+interface EegBatch {
+  samples: number[][];    // samples[channel][sampleIndex]
+  packetSeq: number;
+  timestamp: number;
+}
+```
+
+Each batch is handed to `useAcquisitionActions` which dispatches it forward.
+
+**Key file**: `src/hooks/useAcquisitionActions.ts` — the central state machine that owns the reader, parser, file handle, and analyzer refs.
+
+## Step 2: Waveform Bus
+
+**Files**: `src/state/waveformBus.ts`, `src/state/rawWaveformBus.ts`
+
+After parsing, each sample value is pushed to an **observer bus**:
+
+```typescript
+// src/state/waveformBus.ts (simplified)
+export function createWaveformBus(): WaveformBus {
+  const buffers = new Map<string, Float32Array>();  // per-channel ring buffers
+  const writeIndexes = new Map<string, number>();
+
+  return {
+    push(value, channelName) {
+      const buf = buffers.get(channelName);
+      const idx = writeIndexes.get(channelName);
+      buf[idx % CAPACITY] = value;     // ring buffer write
+      writeIndexes.set(channelName, idx + 1);
+    },
+    copyLatest(out, count, channelName) {
+      // copy the last `count` samples into `out`
+    },
+  };
+}
+```
+
+The bus is a **ring buffer** with 600s capacity (150,000 samples at 250 Hz). Two singleton buses exist:
+
+- `src/state/rawWaveformBus.ts` — `createWaveformBus()` for raw data
+- `src/state/filteredWaveformBus.ts` — `createWaveformBus()` for filtered data
+
+**Why buses instead of Zustand?** 250 Hz data would cause 250 React re-renders per second if stored in Zustand. The bus bypasses React and feeds Canvas directly via `requestAnimationFrame`.
+
+## Step 3: Waveform Rendering
+
+**File**: `src/components/WaveformPanel.tsx` (758 lines)
+
+Both `RawWaveformPanel` and `FilteredWaveformPanel` wrap a single shared component. The rendering loop:
+
+```typescript
+// Inside WaveformPanel (simplified)
+function drawLoop() {
+  const samples = new Float32Array(windowSamples);
+  bus.copyLatest(samples, windowSamples, channelName);
+
+  // Canvas 2D drawing
+  ctx.clearRect(0, 0, width, height);
+  ctx.beginPath();
+  for (let i = 0; i < samples.length; i++) {
+    const x = (i / samples.length) * width;
+    const y = scaleToPixel(samples[i]);
+    ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  animFrameId = requestAnimationFrame(drawLoop);
+}
+```
+
+This runs at display refresh rate (~60 fps), not at 250 Hz. The bus's `copyLatest` efficiently extracts the most recent N samples regardless of how many accumulated since the last frame.
+
+## Step 4: IIR Filtering
+
+**File**: `src/analysis/butterworthFilter.ts`
+
+After the raw bus push, the same batch goes through a **4th-order Butterworth IIR** band-pass filter:
+
+```
+raw samples → [HP filter stage] → [LP filter stage] → filteredWaveformBus.push()
+```
+
+The filter uses **Direct Form II** topology for numerical stability. Coefficients are recomputed whenever the user changes cutoff frequencies on the Setup page.
+
+## Step 5: FFT Analysis
+
+**File**: `src/analysis/eegFrequencyAnalysis.ts`
+
+The filtered data feeds a sliding FFT window:
+
+| Parameter | Value |
+|---|---|
+| Window duration | 2 seconds (500 samples) |
+| Hop size | 0.5 seconds (125 samples) |
+| FFT size | 512 points |
+| Window function | Hann |
+
+Band powers are computed by summing FFT magnitudes within each frequency range:
+
+| Band | Range (Hz) |
+|---|---|
+| Delta | 0.5 – 4 |
+| Theta | 4 – 8 |
+| Alpha | 8 – 13 |
+| Beta | 13 – 30 |
+| Gamma | 30 – 50 |
+
+## Step 6: Engagement Index
+
+**File**: `src/algorithms/engagementIndex.ts`
+
+```typescript
+export function calculateEngagementIndex(bandPowers: EegBandPowers): number | null {
+  const denominator = bandPowers.alpha + bandPowers.theta;
+  if (denominator <= 0) return null;
+  return bandPowers.beta / denominator;
+}
+```
+
+The raw EI is EMA-smoothed in the Zustand store (`src/store/eegStore.ts`):
+
+```typescript
+smoothEI = EMA_ALPHA * rawEI + (1 - EMA_ALPHA) * prevSmoothEI;
+```
+
+## Step 7: Focus Classification
+
+**File**: `src/focus/focusCalibration.ts`
+
+A 4-state machine: `idle → waiting-warmup → collecting-baseline → active`. Each decision window compares the current EI median against the baseline reference value.
+
+## Step 8: AI Pipeline
+
+**Files**: `src/ai/agentPipeline.ts`, `src/ai/indexedDb.ts`
+
+Five-band feature frames (δ,θ,α,β,γ per 0.5s) are written to IndexedDB. When the user asks a question, frames are retrieved, summarized, and sent as context to an OpenAI-compatible LLM.
+
+## Key Architectural Decisions
+
+| Decision | Why |
+|---|---|
+| **Observer buses** for waveforms | Avoid 250 Hz React re-renders |
+| **Zustand** for UI state | Lightweight, works with React DevTools |
+| **Refs** for non-serializable objects | `SerialPort`, `FileStream`, analyzers can't be serialized |
+| **No React Router** | Single-page tab navigation simpler for a workspace app |
+| **Static build** (`dist/`) | Deploy anywhere; no backend needed |
+| **Web Serial only** | Current focus; `src/transport/` abstraction ready for future bridges |
+
+## Next
+
+→ [Add your own panel to the UI](/docs/freebci-daq/dev/add-a-panel)

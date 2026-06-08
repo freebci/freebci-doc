@@ -1,0 +1,64 @@
+---
+sidebar_position: 1
+sidebar_label: 'Troubleshooting'
+---
+
+# Troubleshooting
+
+Common issues and solutions for FreeBCI DAQ.
+
+## Browser Support
+
+| Browser | Works? |
+|---|---|
+| Chrome 89+ (desktop) | Yes |
+| Edge 89+ (desktop) | Yes |
+| Firefox, Safari, Mobile | No |
+
+**"Browser does not support Web Serial"** → Switch to Chrome or Edge.
+
+## Connection Issues
+
+### Device Not Found
+
+- Check USB cable and device power
+- Verify OS-level serial drivers
+- Try a different USB port
+- Run `ls /dev/tty.*` (macOS) or check Device Manager (Windows)
+
+### ACK Timeout Errors
+
+**"Timed out waiting for serial initialization reset ACK"** — device didn't respond to EEGRST within 2s. Verify firmware compatibility, baud rate (921600), and that no other app uses the port.
+
+**"Timed out waiting for hardware initialization ACK"** — device rejected config parameters. Try default settings.
+
+### Stall Detection
+
+**"No valid serial EEG frame arrived for 2 seconds"** — check if device is actively sampling. May auto-recover.
+
+## Stream Issues
+
+Pre-conditions for starting stream:
+1. Hardware parameters confirmed (green badge)
+2. Site bindings confirmed
+3. Serial port connected
+4. CSV file selected (if CSV writes enabled)
+
+## AI Connection Issues
+
+- **Wrong Base URL** → Verify endpoint matches provider
+- **Invalid API Key** → Check for extra spaces
+- **Ollama not running** → `ollama serve`
+- **CORS issues** → Endpoint must support CORS from your origin
+
+## Performance
+
+- Turn off **Draw** toggle to pause chart rendering while keeping data flowing
+- IndexedDB write timeouts → export and clear old conversations
+
+## Still Stuck?
+
+- Check [System page](/docs/freebci-daq/system-tuning) for runtime status
+- Verify pre-conditions in [Hardware Setup](/docs/freebci-daq/hardware-setup)
+- Review [Configuration](/docs/freebci-daq/reference/configuration)
+- Consult the [FAQ](/docs/freebci-daq/reference/faq)

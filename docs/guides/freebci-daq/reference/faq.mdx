@@ -1,0 +1,90 @@
+---
+sidebar_position: 6
+sidebar_label: 'FAQ'
+---
+
+# FAQ
+
+## General
+
+**Q: What is FreeBCI DAQ?**
+A: Browser-based EEG acquisition and real-time spectral analysis. All processing is local.
+
+**Q: Is it free?**
+A: Yes, AGPL v3 open source.
+
+**Q: Does it work offline?**
+A: Core acquisition/analysis yes. AI features need internet (or local Ollama).
+
+**Q: What hardware is supported?**
+A: Any EEG device with USB serial (UART) using int24 binary protocol at 921600 baud.
+
+## Browser
+
+**Q: Why only Chrome/Edge?**
+A: Web Serial API is Chromium-only.
+
+**Q: Can I use mobile?**
+A: No. Mobile browsers lack Web Serial / USB device access.
+
+**Q: Why localhost or HTTPS?**
+A: Web Serial and File System Access API require secure context.
+
+## Data & Privacy
+
+**Q: Is data uploaded?**
+A: No. All processing is local. No backend server.
+
+**Q: Where is data stored?**
+A: IndexedDB (features), LocalStorage (preferences), memory (raw samples), optional CSV file.
+
+**Q: Is my API key safe?**
+A: Stored in IndexedDB, sent only directly to your configured API endpoint.
+
+## Streaming & Analysis
+
+**Q: Why does EI take a few seconds?**
+A: FFT needs a 2-second window of samples.
+
+**Q: Why are first 30s excluded?**
+A: Device warmup. Configurable via `VITE_INITIAL_UNRELIABLE`.
+
+**Q: Why is the heatmap incomplete?**
+A: Single effective channel (ch0). Builds from rolling site records.
+
+**Q: How accurate is focus classification?**
+A: Binary approximation based on EI median comparison. Not medical grade.
+
+## AI Analysis
+
+**Q: Which models work best?**
+A: GPT-4o, DeepSeek V3, Llama 3 (via Ollama).
+
+**Q: Can I use without API key?**
+A: Yes, with local Ollama. No key needed.
+
+**Q: Does AI see raw EEG?**
+A: No. Only pre-computed band power values (δ,θ,α,β,γ).
+
+## Development
+
+**Q: Can I modify the code?**
+A: Yes, AGPL v3. See [Developer Guide](/docs/freebci-daq/reference/developer-guide) and [Dev Tutorials](/docs/freebci-daq/reference/developer-guide).
+
+**Q: How do I run tests?**
+```bash
+npm test
+npx vitest run tests/serialEegProtocol.test.ts
+npx vitest run -t "test name"
+```
+
+## Troubleshooting
+
+**Q: Where are error details?**
+A: Diagnostics drawer (Log button), System page, Browser DevTools (F12).
+
+**Q: What does STALLED mean?**
+A: No valid packet for 2s. Auto-recovers when data resumes.
+
+**Q: IndexedDB write timeouts?**
+A: Export important conversations, clear old data.

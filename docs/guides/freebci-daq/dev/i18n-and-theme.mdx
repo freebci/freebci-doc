@@ -1,0 +1,254 @@
+---
+sidebar_position: 10
+sidebar_label: 'i18n & Theme'
+---
+
+# 9. i18n & Theming
+
+> Goal: Add new translation keys for Chinese/English support and customize the Tailwind v4 theme.
+
+## Internationalization (i18n)
+
+**File**: `src/i18n.ts` (862 lines, 400+ translation keys)
+
+### Translation Structure
+
+```typescript
+const translations = {
+  'zh-CN': {
+    'app.title': 'FreeBCI DAQ',
+    'app.heading': '脑电信号采集与实时频域分析',
+    // ...400+ keys...
+  },
+  'en-US': {
+    'app.title': 'FreeBCI DAQ',
+    'app.heading': 'EEG Acquisition & Realtime Spectral Analysis',
+    // ...400+ keys...
+  },
+} as const;
+
+export type TranslationKey = keyof (typeof translations)['zh-CN'];
+
+export function t(locale: Locale, key: TranslationKey, values: Record<string, string | number> = {}): string {
+  let message: string = translations[locale][key];
+  for (const [name, value] of Object.entries(values)) {
+    message = message.split(`{${name}}`).join(String(value));
+  }
+  return message;
+}
+```
+
+### Adding a New Key
+
+1. Add the key to **both** language sections:
+
+```typescript
+// In the 'en-US' block:
+'myPanel.eyebrow': 'My Feature',
+'myPanel.title': 'My Panel Title',
+'myPanel.description': 'This panel shows {count} items.',
+
+// In the 'zh-CN' block:
+'myPanel.eyebrow': '我的功能',
+'myPanel.title': '我的面板标题',
+'myPanel.description': '此面板显示 {count} 个项目。',
+```
+
+2. Use it in a component:
+
+```tsx
+import { t } from '../i18n';
+import type { Locale } from '../i18n';
+
+export function MyPanel({ locale }: { locale: Locale }) {
+  return (
+    <Card>
+      <CardHeader
+        eyebrow={t(locale, 'myPanel.eyebrow')}
+        title={t(locale, 'myPanel.title')}
+      />
+      <CardBody>
+        <p>{t(locale, 'myPanel.description', { count: 42 })}</p>
+      </CardBody>
+    </Card>
+  );
+}
+```
+
+### Key Naming Convention
+
+```
+{module}.{subKey}
+
+'app.title'
+'hardware.eyebrow'
+'connection.openSerial'
+'filter.paramHpCutoffHz'
+'focus.phaseLabel'
+'ai.modelSettingsTitle'
+```
+
+### TypeScript Enforcement
+
+The `TranslationKey` type is derived from the keys in the `zh-CN` block. If you add a key to `zh-CN` but forget `en-US`, TypeScript won't catch it — but at runtime the English text will be `undefined`. Always add to both.
+
+### Parameterized Strings
+
+Use `{paramName}` syntax for dynamic values:
+
+```typescript
+'diagnostics.duration': 'Duration {duration} ms',
+'focus.outputWindowSecondsLabel': 'User output {seconds}s focus state',
+
+// Usage:
+t(locale, 'diagnostics.duration', { duration: 234 });
+// → "Duration 234 ms"
+```
+
+### Locale Detection
+
+Locale is stored as React state in `App.tsx`, toggled by the language button in `BottomStatusBar`. It is **not** persisted to localStorage. On page load, it defaults to `zh-CN`.
+
+```typescript
+// src/App.tsx
+const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE); // 'zh-CN'
+
+useEffect(() => {
+  document.documentElement.lang = locale;
+  document.title = t(locale, 'app.title');
+}, [locale]);
+```
+
+---
+
+## Theming (Tailwind v4)
+
+**File**: `src/styles.css`
+
+### Theme Variables
+
+Tailwind v4 uses CSS `@theme` for design tokens:
+
+```css
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f8f8f9;       /* Page background */
+  --color-card: #ffffff;         /* Card background */
+  --color-surface-2: #ececed;    /* Secondary surface (headers) */
+  --color-ink: #111111;         /* Primary text */
+  --color-meta: #525252;        /* Secondary text */
+  --color-hint: #8a8a8a;        /* Tertiary text */
+  --color-hairline: #d4d4d8;    /* Borders */
+  --color-accent: #0e7490;      /* Primary accent (cyan-700) */
+  --color-accent-soft: #e0f7fa; /* Light accent background */
+  --color-success: #047857;     /* Success green */
+  --color-warn: #b45309;        /* Warning amber */
+  --color-error: #b91c1c;       /* Error red */
+  --color-grid: #e8e8eb;        /* Chart grid lines */
+  --color-led-off: #c4c4c8;     /* Lead-off indicator */
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, ...;
+  --font-mono: "JetBrains Mono", ui-monospace, ...;
+  --font-serif: "Instrument Serif", ui-serif, ...;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+}
+```
+
+### Using Theme Colors in Components
+
+```tsx
+// Tailwind utility classes reference the theme tokens directly:
+<div className="bg-card text-ink border border-hairline" />
+<span className="text-accent font-mono" />
+<button className="bg-accent text-white rounded-sm" />
+```
+
+### Adding a New Theme Color
+
+```css
+@theme {
+  --color-brand-purple: #7c3aed;
+}
+```
+
+Then use it: `className="bg-brand-purple text-white"`.
+
+### Fonts
+
+Fonts are loaded via `@fontsource` packages imported in `src/main.tsx`:
+
+```typescript
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/instrument-serif/400.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+```
+
+These are bundled as part of the Vite build. No external font CDN calls.
+
+---
+
+## UI Primitives
+
+**Files**: `src/components/ui/`
+
+| Component | Purpose | Key Props |
+|---|---|---|
+| `Card` | Section wrapper | `as`, `ariaLabelledBy` |
+| `CardHeader` | Card title bar | `eyebrow`, `title`, `titleId`, `trailing` |
+| `CardBody` | Card content area | `className` |
+| `Button` | Action button | `variant` ('primary', 'ghost'), `size` |
+| `NumberInput` | Numeric input | `min`, `max`, `step`, `value`, `onChange` |
+| `TextInput` | Text input | Standard input props |
+| `Checkbox` | Checkbox toggle | `checked`, `onChange` |
+| `ToggleSwitch` | Toggle switch | `checked`, `onChange` |
+| `StatusDot` | Colored indicator | `tone` ('idle'/'active'/'success'/'warn'/'error'), `pulse` |
+| `Stat` | Label/value pair | `label`, `value` |
+| `Eyebrow` | Overline text | Children |
+| `Field` | Form field wrapper | `label`, `children` |
+| `LanguageToggle` | zh-CN / EN switcher | `locale`, `onToggle` |
+| `Stepper` | Step indicator | `steps`, `current` |
+
+### Card Pattern
+
+Every panel in the app follows this structure:
+
+```tsx
+import { Card, CardHeader, CardBody } from './ui';
+
+<Card ariaLabelledBy="my-panel-title">
+  <CardHeader
+    eyebrow="Category"
+    title="Panel Title"
+    titleId="my-panel-title"
+    trailing={<Button size="sm">Action</Button>}
+  />
+  <CardBody>
+    {/* Panel content */}
+  </CardBody>
+</Card>
+```
+
+**Rules**:
+
+- Always set `ariaLabelledBy` on Card and `titleId` on CardHeader for accessibility
+- The `eyebrow` is the small uppercase label above the title
+- The `trailing` slot is for action buttons in the header
+
+---
+
+## Common Mistakes
+
+1. **Adding key to only one language**: Always add to both `zh-CN` and `en-US`.
+2. **Hardcoding English strings**: Use `t(locale, 'key')` even if the default locale is zh-CN.
+3. **Forgetting `as const` on the translations object**: Without it, `TranslationKey` becomes `string` and TypeScript stops type-checking keys.
+4. **Using Tailwind classes that don't exist**: Only the `@theme` tokens are available. Arbitrary values work (`bg-[#ff0000]`) but theme tokens are preferred.
+
+## Next
+
+→ [Write and run tests](/docs/freebci-daq/dev/testing)

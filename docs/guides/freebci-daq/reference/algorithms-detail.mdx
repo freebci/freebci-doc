@@ -1,0 +1,44 @@
+---
+sidebar_position: 3
+sidebar_label: 'Algorithms'
+---
+
+# Algorithms in Detail
+
+Mathematical and implementation details for EEG analysis algorithms.
+
+## Engagement Index
+
+**EI = β / (α + θ)**. Higher EI → more engaged. Reference: Pope et al. (1995).
+
+### EMA Smoothing
+
+`smoothEI[t] = α × rawEI[t] + (1−α) × smoothEI[t−1]`
+
+Default α = 0.1. Applied only in Zustand store layer.
+
+### Alert Threshold
+
+Default 0.3. Also feeds AI focus inference: `FOCUS_SUPPORT_RATIO_THRESHOLD` and `FOCUS_MIXED_RATIO_THRESHOLD`.
+
+## Focus Classification
+
+4-state FSM. Baseline = median EI during collection window. Classification: compare current window median vs baseline reference.
+
+| Parameter | Default | Range |
+|---|---|---|
+| Warmup | 30s | 20–60 |
+| Baseline | 15s | 15–60 |
+| Decision | 15s | 5–300 |
+
+## FFT Spectral Analysis
+
+Hann window → FFT (512 points, 250 Hz) → Δf ≈ 0.488 Hz. Band power = Σ|X[k]|² over band bins, normalized.
+
+## Butterworth IIR Filter
+
+4th-order, Direct Form II, RBJ Audio EQ Cookbook coefficients. Q = 1/√2 per stage.
+
+## Initial Unreliable Period
+
+First N seconds (default 30s) excluded from CSV, EI trend, and focus classification.

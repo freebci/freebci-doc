@@ -1,0 +1,262 @@
+---
+sidebar_position: 11
+sidebar_label: 'Testing'
+---
+
+# 10. Testing
+
+> Goal: Write unit tests with Vitest, mock IndexedDB with `fake-indexeddb`, and test serial protocol parsing.
+
+## Test Setup
+
+**Framework**: Vitest (no config file — reuses `vite.config.ts`)
+
+```bash
+npm run test:unit       # run all tests
+npm test                # typecheck + unit tests
+
+npx vitest run tests/serialEegProtocol.test.ts   # single file
+npx vitest run -t "parses a valid packet"        # single test by name
+```
+
+### Test File Location
+
+All tests live in `tests/` at the project root. They are **not** included in `tsconfig.json`'s `include` — vitest compiles them separately.
+
+## Writing a Component Test
+
+```typescript
+// tests/MyComponent.test.tsx
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MyPanel } from '../src/components/MyPanel';
+
+describe('MyPanel', () => {
+  it('renders the title', () => {
+    render(<MyPanel locale="en-US" />);
+    expect(screen.getByText('My Panel Title')).toBeDefined();
+  });
+
+  it('shows empty state when no data', () => {
+    render(<MyPanel locale="en-US" />);
+    expect(screen.getByText('No data yet.')).toBeDefined();
+  });
+});
+```
+
+## Testing Zustand Stores
+
+```typescript
+// tests/eegStore.test.ts
+import { describe, it, expect, beforeEach } from 'vitest';
+import { useEegStore } from '../src/store/eegStore';
+
+describe('EegStore', () => {
+  beforeEach(() => {
+    useEegStore.setState({
+      stream: { isStreaming: false, isStarting: false },
+      status: 'idle',
+    });
+  });
+
+  it('updates stream state', () => {
+    useEegStore.getState().setStream({ isStreaming: true, isStarting: true });
+    expect(useEegStore.getState().stream.isStreaming).toBe(true);
+  });
+
+  it('pushes engagement results with EMA smoothing', () => {
+    useEegStore.getState().pushEngagementResult({
+      timestamp: Date.now(),
+      ei: 0.5,
+      bandPowers: { delta: 1, theta: 2, alpha: 3, beta: 4, gamma: 5 },
+    });
+    const latest = useEegStore.getState().smoothEngagementResults.at(-1);
+    expect(latest?.ei).toBeDefined();
+  });
+});
+```
+
+### Zustand Testing Tips
+
+- Use `getState()` and `setState()` for direct store manipulation — no need to render a component
+- Reset state in `beforeEach` to isolate tests
+- Test the EMA smoothing logic by pushing multiple results and checking the smoothed values
+
+## Testing Serial Protocol Parsing
+
+```typescript
+// tests/serialEegProtocol.test.ts (simplified)
+import { describe, it, expect } from 'vitest';
+
+describe('Serial Protocol Parser', () => {
+  it('parses a valid int24 frame', () => {
+    // Construct a synthetic binary packet:
+    const packet = new Uint8Array([
+      0xAA, 0xBB,           // header
+      0x01, 0x00, 0x00, 0x00, // seq = 1
+      0x00, 0x08, 0x00,     // ch0 sample = 2048 (int24)
+      // ... more samples, checksum ...
+    ]);
+
+    const batches = parser.feedChunk(packet);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].samples[0][0]).toBe(2048);
+  });
+
+  it('detects packet sequence gaps', () => {
+    const gap = countForwardSerialDeviceSeqGap(5, 8);
+    expect(gap).toBe(3); // missed seq 6, 7
+  });
+
+  it('ignores wrap-around in sequence comparison', () => {
+    const gap = countForwardSerialDeviceSeqGap(0xFFFFFFFE, 1);
+    expect(gap).toBe(0); // wrap-around, not a real gap
+  });
+
+  it('rejects malformed packets', () => {
+    const garbage = new Uint8Array([0xFF, 0xFF, 0xFF]);
+    const batches = parser.feedChunk(garbage);
+    expect(batches).toHaveLength(0);
+  });
+});
+```
+
+## Testing with fake-indexeddb
+
+**Package**: `fake-indexeddb` (devDependency, auto-injected in vitest via `setupFiles` or `globalSetup`)
+
+```typescript
+// tests/aiIndexedDb.test.ts
+import { describe, it, expect, beforeEach } from 'vitest';
+import 'fake-indexeddb/auto'; // ← auto-injects IDBFactory globally
+
+describe('AI IndexedDB', () => {
+  beforeEach(() => {
+    // fake-indexeddb provides a fresh in-memory IDB per test
+  });
+
+  it('writes and reads feature frames', async () => {
+    const frame = {
+      timestampMs: Date.now(),
+      bandPowers: { delta: 1, theta: 2, alpha: 3, beta: 4, gamma: 5 },
+      channelName: 'ch0',
+      bindingId: 'test-binding',
+    };
+
+    await writeFeatureFrame('test-conversation', frame);
+    const frames = await readFeatureFrames('test-conversation', {
+      startMs: 0,
+      endMs: Date.now() + 1000,
+    });
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0].bandPowers.alpha).toBe(3);
+  });
+
+  it('respects retention window', async () => {
+    const oldFrame = { ...frame, timestampMs: Date.now() - 20 * 60 * 1000 }; // 20 min ago
+    await writeFeatureFrame('test-conversation', oldFrame);
+    // Should be trimmed on next write
+    const frames = await readFeatureFrames('test-conversation', {
+      startMs: 0,
+      endMs: Date.now(),
+    });
+    expect(frames).toHaveLength(0);
+  });
+});
+```
+
+## Testing Algorithm Functions
+
+Pure functions are the easiest to test:
+
+```typescript
+// tests/engagementIndex.test.ts
+import { describe, it, expect } from 'vitest';
+import { calculateEngagementIndex } from '../src/algorithms/engagementIndex';
+
+describe('calculateEngagementIndex', () => {
+  it('returns beta / (alpha + theta)', () => {
+    const result = calculateEngagementIndex({
+      delta: 1, theta: 2, alpha: 3, beta: 4, gamma: 5,
+    });
+    expect(result).toBeCloseTo(4 / (3 + 2)); // 0.8
+  });
+
+  it('returns null when denominator is zero', () => {
+    const result = calculateEngagementIndex({
+      delta: 1, theta: 0, alpha: 0, beta: 4, gamma: 5,
+    });
+    expect(result).toBeNull();
+  });
+
+  it('handles very large band power values', () => {
+    const result = calculateEngagementIndex({
+      delta: 100, theta: 200, alpha: 300, beta: 400, gamma: 500,
+    });
+    expect(result).toBeCloseTo(400 / (300 + 200)); // 0.8
+  });
+});
+```
+
+## Testing Filter Functions
+
+```typescript
+// tests/butterworthFilter.test.ts
+import { describe, it, expect } from 'vitest';
+import { Biquad, highPassBiquad } from '../src/analysis/butterworthFilter';
+
+describe('Butterworth Biquad', () => {
+  it('passes DC through a highpass filter', () => {
+    const hp = highPassBiquad(10, 250, 0.707);
+
+    // Feed constant value (DC)
+    for (let i = 0; i < 1000; i++) {
+      hp.processSample(1.0);
+    }
+
+    // After settling, DC should be attenuated
+    const output = hp.processSample(1.0);
+    expect(Math.abs(output)).toBeLessThan(0.01);
+  });
+
+  it('reset() clears state', () => {
+    const hp = highPassBiquad(10, 250, 0.707);
+    hp.processSample(100); // push a spike through
+
+    hp.reset();
+
+    // After reset, output should settle toward zero
+    let settled = 0;
+    for (let i = 0; i < 100; i++) {
+      settled = hp.processSample(0);
+    }
+    expect(Math.abs(settled)).toBeLessThan(0.001);
+  });
+});
+```
+
+## Running Tests in CI
+
+```bash
+npm test
+# Equivalent to:
+# npm run typecheck && npm run test:unit
+```
+
+Tests exit with code 0 on success. Suitable for GitHub Actions, GitLab CI, etc.
+
+## Common Test Patterns
+
+| What | How |
+|---|---|
+| Pure function | `expect(fn(input)).toBe(expected)` |
+| Store action | `getState().action(); expect(getState().field).toBe(...)` |
+| React component | `render(<Cmp />); expect(screen.getByText(...))` |
+| IndexedDB | `import 'fake-indexeddb/auto'` at top of file |
+| Protocol parser | Construct synthetic `Uint8Array`, call `feedChunk()` |
+| Edge case | Null, zero, NaN, extreme values, wrap-around |
+
+## Next
+
+→ [Build for production and deploy](/docs/freebci-daq/dev/build-and-deploy)

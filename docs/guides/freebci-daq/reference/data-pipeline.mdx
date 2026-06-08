@@ -1,0 +1,59 @@
+---
+sidebar_position: 2
+sidebar_label: 'Data Pipeline'
+---
+
+# Data Pipeline
+
+This document describes the complete data processing pipeline from hardware to visualization.
+
+## Pipeline Architecture
+
+```
+EEG Hardware → Web Serial (921600 baud) → Binary Protocol Parser (int24)
+  ├─ rawWaveformBus → Canvas (Raw Waveform)
+  ├─ Butterworth IIR 4th-order → filteredWaveformBus → Canvas (Filtered)
+  ├─ FFT Analyzer (2s window, 0.5s hop, 512 points, Hann window)
+  │    ├─ Band Powers → EI Trend (Zustand + EMA)
+  │    ├─ Band Powers → Focus Classifier
+  │    ├─ Band Powers → Brain Heatmap
+  │    └─ Five-band Frames → IndexedDB → AI Agent (LLM)
+  └─ CSV Writer (FileSystem API, optional)
+```
+
+## Observer Buses
+
+Raw and filtered waveforms use observer buses (`rawWaveformBus`, `filteredWaveformBus`) to avoid 60 fps React re-renders for 250 Hz data. Each bus is a ring buffer (600s capacity) with `push` / `copyLatest` / `reset` API.
+
+## Filtering
+
+4th-order Butterworth IIR, Direct Form II topology. Band-pass (HP + LP cascade). Changing cutoffs rebuilds the filter and clears the 2s analysis window.
+
+## FFT Analysis
+
+| Parameter | Value |
+|---|---|
+| Window | 2s (500 samples) |
+| Hop | 0.5s (125 samples) |
+| FFT size | 512 points |
+| Window function | Hann |
+
+Frequency bands: Delta (0.5–4), Theta (4–8), Alpha (8–13), Beta (13–30), Gamma (30–50) Hz.
+
+## Engagement Index
+
+`EI = β / (α + θ)`. EMA-smoothed in Zustand only. First 30s excluded.
+
+## Focus Classification
+
+4-state FSM: idle → warmup (30s) → baseline (15s, median EI) → active (compare median vs reference every N seconds).
+
+## CSV Output
+
+File System Access API. First N seconds excluded (default 30s). Append-mode writes via `FileSystemWritableFileStream`.
+
+## AI Pipeline
+
+FFT output → band power vector → IndexedDB frames → LLM context → streaming response (Reasoning/Evidence/Suggestions/Notes).
+
+See [AI Integration](/docs/freebci-daq/reference/ai-integration) for details.

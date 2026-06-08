@@ -1,0 +1,49 @@
+---
+sidebar_position: 4
+sidebar_label: 'AI Integration'
+---
+
+# AI Integration
+
+OpenAI-compatible LLM integration for EEG analysis.
+
+## Supported Providers
+
+| Provider | Base URL | Auth |
+|---|---|---|
+| OpenAI | `api.openai.com/v1` | API Key |
+| DeepSeek | `api.deepseek.com/v1` | API Key |
+| Ollama | `localhost:11434/v1` | None |
+| Custom | User-defined | Optional |
+
+## Configuration
+
+Provider → Base URL → Model ID → API Key → Temperature. **Test model** verifies connectivity.
+
+## How Analysis Works
+
+1. Five-band feature frames recorded to IndexedDB (every 0.5s)
+2. User question + recent frames → LLM prompt
+3. Streaming response → parsed into Reasoning / Evidence / Suggestions / Notes
+
+## Default Goal
+
+"Analyze Delta, Theta, Alpha, Beta, and Gamma changes in the last 30 seconds."
+
+## Five-Band Feature Recording
+
+Must be enabled on Setup page. Records δ,θ,α,β,γ vectors to IndexedDB. Each conversation gets its own database.
+
+## Data Persistence
+
+IndexedDB with 10-minute retention. Write statistics shown as: frames / pending / timeouts.
+
+## Local Fallback
+
+If no API key and not a local service → basic band power statistics without AI interpretation.
+
+## Conversation Export/Import
+
+JSON bundles containing: manifest, frames (JSONL), conversation metadata. Import restores to IndexedDB.
+
+See [Sessions](/docs/freebci-daq/sessions) for conversation management.

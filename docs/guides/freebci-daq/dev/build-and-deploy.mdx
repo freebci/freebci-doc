@@ -1,0 +1,181 @@
+---
+sidebar_position: 12
+sidebar_label: 'Build & Deploy'
+---
+
+# 11. Build & Deploy
+
+> Goal: Build the production bundle, understand the output, and deploy to a static host.
+
+## Build Command
+
+```bash
+npm run build
+# Equivalent to:
+# npm run typecheck && vite build
+```
+
+Output goes to `dist/`:
+
+```
+dist/
+├── index.html              # Entry point (0.6 KB)
+├── assets/
+│   ├── index-*.css         # Tailwind CSS bundle (~63 KB)
+│   ├── index-*.js          # App code (~843 KB total across 4 JS chunks)
+│   └── *.woff2             # Font files (Inter, JetBrains Mono, Instrument Serif)
+└── favicon-*.png           # Favicon
+```
+
+## Build Output Details
+
+| File | Size (gzip) | Contents |
+|---|---|---|
+| `index.html` | 0.35 KB | SPA shell, loads CSS + JS |
+| `index-*.css` | 21.93 KB gzip | All Tailwind utility classes + custom theme + SVG chart CSS |
+| `index-*.js` (4 files) | ~237 KB gzip total | React app, serial parser, FFT, AI SDK, i18n (400+ keys) |
+
+The build is **fully self-contained** — no external CDN calls for fonts or libraries. Everything is in `dist/`.
+
+## Chunk Size Warning
+
+The largest JS chunk is ~540 KB raw (164 KB gzip). This is expected for a single-page app with FFT, UI, and AI integration. If you want to reduce initial load:
+
+```typescript
+// vite.config.ts
+export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'fft': ['fft.js'],
+          'ai': ['ai', '@ai-sdk/openai-compatible'],
+        },
+      },
+    },
+  },
+});
+```
+
+## Preview Locally
+
+```bash
+npm run preview
+# Serves dist/ on http://localhost:4173
+```
+
+Test the production build before deploying — some issues (like missing assets or CORS) only appear in production mode.
+
+## Deployment Requirements
+
+### Critical: HTTPS or localhost
+
+Web Serial API requires a **[secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts)**. This means:
+
+| Origin | Web Serial works? |
+|---|---|
+| `http://localhost:4173` | Yes |
+| `http://127.0.0.1:4173` | Yes |
+| `https://your-domain.com` | Yes |
+| `http://your-domain.com` | **No** |
+| `file:///path/to/dist/index.html` | **No** |
+
+### Deployment Options
+
+**Static file hosting** (any of these work, provided HTTPS):
+
+| Platform | Notes |
+|---|---|
+| **GitHub Pages** | HTTPS by default, good for open source |
+| **Netlify** | Drag-and-drop `dist/`, auto HTTPS |
+| **Vercel** | `vercel --prod`, auto HTTPS |
+| **Cloudflare Pages** | Connect repo, auto deploy |
+| **nginx** | Serve `dist/` + SSL cert (Let's Encrypt) |
+| **Any static host** | Just serve `dist/` with HTTPS |
+
+### Example: nginx Config
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+    root /var/www/freebci-daq/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;  # SPA fallback
+    }
+
+    # Enable Web Serial-specific headers
+    add_header Permissions-Policy "serial=(self)";
+}
+```
+
+### Example: Dockerfile
+
+```dockerfile
+FROM nginx:alpine
+COPY dist/ /usr/share/nginx/html/
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+```
+
+## Environment Variables at Build Time
+
+`VITE_*` variables are **inlined at build time** by Vite. This means:
+
+1. `.env` values are burned into the JavaScript bundle
+2. Changing `.env` requires a **rebuild**
+3. The Advanced Tuning panel (localStorage) provides **runtime overrides**
+4. `.env` files should be at the project root, never in `dist/`
+
+```bash
+# Build with custom parameters:
+cp .env.example .env
+# Edit .env
+npm run build
+# dist/ now has your tuned defaults baked in
+```
+
+## Content Security Policy
+
+If your deploy adds a CSP, allow:
+
+```
+default-src 'self';
+script-src 'self' 'unsafe-inline';        # React + Vite inlining
+style-src 'self' 'unsafe-inline';         # Tailwind CSS
+connect-src 'self' https://api.openai.com https://api.deepseek.com http://localhost:11434;
+font-src 'self';
+img-src 'self' data:;
+```
+
+Adjust `connect-src` for your AI provider endpoints.
+
+## Pre-Deployment Checklist
+
+- [ ] `npm test` passes (typecheck + 162 unit tests)
+- [ ] `npm run build` succeeds
+- [ ] `npm run preview` → test in Chrome: Web Serial dialog opens
+- [ ] `.env` configured for production (if different from dev)
+- [ ] HTTPS certificate valid (or localhost for local use)
+- [ ] CSP headers allow Web Serial
+
+## Common Deployment Issues
+
+| Issue | Cause | Fix |
+|---|---|---|
+| Web Serial dialog doesn't open | HTTP (not HTTPS/localhost) | Deploy with HTTPS |
+| "Not a secure context" | `file://` protocol | Use a web server, not double-click |
+| Blank page / 404 on refresh | Missing SPA fallback | Add `try_files $uri /index.html` to nginx |
+| Fonts look wrong | CSP blocking font files | Add `font-src 'self'` |
+| AI API calls fail | CSP blocking external domains | Whitelist API endpoints in `connect-src` |
+| Build warning: chunk > 500 KB | Normal for this app | Split chunks if needed (see above) |
+
+## Next
+
+→ [Developer Reference](/docs/freebci-daq/reference/developer-guide) for architecture overview and conventions.

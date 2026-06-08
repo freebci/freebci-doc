@@ -1,0 +1,52 @@
+---
+sidebar_position: 5
+sidebar_label: 'Configuration'
+---
+
+# Configuration & Tuning
+
+Parameters resolve as: Advanced Tuning (localStorage) > `.env` (VITE_*) > built-in defaults.
+
+## Environment Variables
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `VITE_EMA_ALPHA` | 0.1 | EI EMA smoothing |
+| `VITE_ALERT_THRESHOLD` | 0.3 | EI alert red line |
+| `VITE_INITIAL_UNRELIABLE` | 30 | Warmup seconds |
+| `VITE_FOCUS_BASELINE` | 15 | Baseline window |
+| `VITE_FOCUS_DECISION` | 15 | Decision window |
+| `VITE_FOCUS_WARMUP` | 30 | Pre-baseline wait |
+
+Must be prefixed with `VITE_`. Inlined at build time by Vite.
+
+## Tuning Scenarios
+
+| Scenario | EMA α | Alert | Warmup |
+|---|---|---|---|
+| Noisy hardware | 0.1 | 0.3 | 60s |
+| Clean, fast | 0.35 | 0.6 | 20s |
+| Default | 0.1 | 0.3 | 30s |
+
+## Parameter Details
+
+**EMA Alpha**: 0.05 (very smooth) → 0.5 (responsive). Default 0.1.
+
+**Alert Threshold**: Also affects AI focus inference. 0.3 (loose) → 0.7 (strict).
+
+**Initial Unreliable & Focus Warmup**: Must be kept in sync.
+
+## Advanced Tuning Panel
+
+System page. Adjust → **Apply & Reload**. **Reset to Defaults** clears localStorage overrides.
+
+## Files Reference
+
+- `src/config/eeg.ts` — Global EEG constants
+- `src/focus/config.ts` — Focus parameters
+- `.env.example` — Env variable template
+- `TUNING.md` — Detailed tuning guidance
