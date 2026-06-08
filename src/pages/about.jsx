@@ -18,9 +18,8 @@ export default function AboutPage() {
 
           <div className="prose prose-zinc dark:prose-invert max-w-none">
             <p className="text-lg leading-relaxed text-zinc-700 dark:text-zinc-300">
-              The{' '}
               <strong className="text-zinc-900 dark:text-zinc-100">
-                FreeBCI Project
+                The FreeBCI Project
               </strong>{' '}
               is an open-source initiative dedicated to making brain-computer
               interface technology accessible, affordable, and transparent for
