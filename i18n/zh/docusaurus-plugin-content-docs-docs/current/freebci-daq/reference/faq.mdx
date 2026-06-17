@@ -17,7 +17,7 @@ sidebar_label: '常见问题'
 答：核心采集和分析可以。AI 功能需要网络（或本地 Ollama）。
 
 **问：支持哪些硬件？**
-答：任何通过 USB 串口（UART）输出 int24 二进制协议、波特率 921600 的 EEG 设备。
+答：FreeBCI DAQ 支持 **FreeBCI Spike 1CH LH001** 和 **FreeBCI Spike 8CH ADS1299**。底层传输为 USB 串口（UART），使用 921600 波特率的 int24 二进制协议。
 
 ## 浏览器
 
@@ -44,7 +44,7 @@ sidebar_label: '常见问题'
 答：设备预热。可通过 `VITE_INITIAL_UNRELIABLE` 配置。
 
 **问：热力图为什么不完整？**
-答：当前仅 ch0 为有效 EEG 通道。热力图通过切换站点逐步积累。
+答：最常见原因是点位绑定不完整。在 **1CH** 流程中，单个点位只会得到简化演示视图；在 **8CH** 流程中，请为每个活动通道绑定正确电极点位。
 
 **问：专注度分类有多准确？**
 答：基于 EI 中位数对比的二元近似。非医疗级别。
@@ -63,7 +63,7 @@ sidebar_label: '常见问题'
 ## 开发
 
 **问：可以修改代码吗？**
-答：可以，遵循 AGPL v3 协议。详见[开发者指南](developer-guide)和[开发者教程](developer-guide)。
+答：可以，遵循 AGPL v3 协议。详见[开发者指南](/zh/docs/freebci-daq/reference/developer-guide)和[开发者教程](/zh/docs/freebci-daq/dev)。
 
 **问：如何运行测试？**
 ```bash
