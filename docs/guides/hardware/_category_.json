@@ -1,6 +1,6 @@
 {
-  "label": "Hardware",
-  "position": 4,
+  "label": "FreeBCI Spike",
+  "position": 3,
   "link": {
     "type": "doc",
     "id": "hardware/index"
