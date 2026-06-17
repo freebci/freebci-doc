@@ -1,0 +1,8 @@
+{
+  "label": "Hardware",
+  "position": 4,
+  "link": {
+    "type": "doc",
+    "id": "hardware/index"
+  }
+}

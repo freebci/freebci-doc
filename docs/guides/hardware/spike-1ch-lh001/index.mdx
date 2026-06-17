@@ -1,0 +1,65 @@
+---
+sidebar_position: 1
+sidebar_label: 'Overview'
+---
+
+# FreeBCI Spike 1CH LH001
+
+> The recommended starting point for makers and beginners: get your first signal, learn the workflow, and run the focus / engagement demo in FreeBCI DAQ.
+
+## Positioning
+
+FreeBCI Spike 1CH LH001 is the **onboarding module** in the FreeBCI hardware line.
+
+It is best for:
+
+- first-time EEG and biopotential experimentation
+- classroom or lab demos
+- quick signal verification
+- FreeBCI DAQ focus / engagement demonstrations
+
+## Open Release Contents
+
+The public release package includes:
+
+- schematic PDF
+- Interactive BOM HTML
+- Gerber ZIP
+
+It does **not** include editable EDA sources, firmware source, production test procedures, or regulatory documentation.
+
+## Known Interface Markings
+
+| Marking | Meaning |
+|---|---|
+| `EEG` | Signal electrode input |
+| `REF` | Reference electrode input |
+| `RLD` | Right-leg-drive / common-mode feedback electrode |
+| `BAT` | Battery connection |
+| `NTC` | Battery temperature sensing |
+| `GND` | Ground |
+| `USB-C` | Power / charging interface |
+| `BOOT` | Boot mode button |
+| `RST` | Reset button |
+
+## What Success Looks Like
+
+A successful first-run path for this module is:
+
+1. Board powers on cleanly
+2. FreeBCI DAQ opens the device over USB serial
+3. You see a stable single-channel waveform
+4. EI trend starts updating
+5. You complete a simple focus calibration demo
+
+## Recommended Path
+
+1. Read [Safety and Lab Setup](/docs/hardware/safety-and-lab-setup)
+2. Follow [1CH First Power-On](/docs/hardware/spike-1ch-lh001/first-power-on)
+3. Use [Connect to FreeBCI DAQ](/docs/hardware/connect-to-freebci-daq)
+4. Run the [1CH Focus Demo](/docs/hardware/spike-1ch-lh001/focus-demo)
+
+## External Release Files
+
+- [FreeBCI Spike repository](https://github.com/freebci/freebci-spike)
+- [Spike 1CH LH001 module release](https://github.com/freebci/freebci-spike/tree/main/hardware/spike-1ch-lh001)

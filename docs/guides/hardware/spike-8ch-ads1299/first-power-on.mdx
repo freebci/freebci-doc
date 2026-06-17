@@ -1,0 +1,49 @@
+---
+sidebar_position: 2
+sidebar_label: 'First Power-On'
+---
+
+# 8CH First Power-On
+
+> Validate the hardware as a system before attempting a full electrode setup.
+
+## Before Power-On
+
+Check:
+
+- board matches the intended 8CH release
+- analog front-end soldering looks clean
+- connectors are correctly oriented
+- no visible shorts or battery wiring mistakes
+- the test environment follows the safety guidance for isolated prototyping
+
+## First Bring-Up Goal
+
+The first goal is not "full EEG" yet. The first goal is:
+
+- stable power
+- no thermal or obvious hardware faults
+- stable enough operation to enter the DAQ workflow
+
+## Recommended Bring-Up Sequence
+
+1. Power the board without electrodes attached
+2. Watch for obvious fault behavior
+3. Connect the board to the DAQ environment
+4. Confirm the device can be opened over USB serial
+5. Prepare channel bindings before serious data collection
+
+## Why 8CH Needs More Discipline
+
+Compared with 1CH, a multichannel board creates more places where setup quality matters:
+
+- each channel can fail independently
+- site mapping matters for interpretation
+- noise, reference quality, and lead quality can differ by channel
+
+That means a careful staged bring-up saves time later.
+
+## Next
+
+→ [Connect to FreeBCI DAQ](/docs/hardware/connect-to-freebci-daq)  
+→ [8CH Multichannel EEG Setup](/docs/hardware/spike-8ch-ads1299/multichannel-eeg-setup)

@@ -1,0 +1,56 @@
+---
+sidebar_position: 6
+sidebar_label: 'Upgrade from 1CH to 8CH'
+---
+
+# Upgrade from 1CH to 8CH
+
+> The intended product path is simple: start with a single-channel success, then move to a full multichannel EEG setup on the same DAQ platform.
+
+## Why Start with 1CH
+
+1CH is the faster onboarding path:
+
+- simpler bring-up
+- fewer connections to debug
+- easier signal-quality learning
+- fast path to the **Engagement Index** and **focus** demo
+
+## What Changes When You Move to 8CH
+
+The DAQ workflow stays familiar, but the hardware workflow becomes more demanding:
+
+- more electrode connections
+- more site bindings
+- more opportunities for channel mismatch or noise
+- richer live monitoring and multichannel interpretation
+
+## What Stays the Same
+
+- FreeBCI DAQ interface
+- browser requirements
+- Web Serial connection model
+- live monitoring workflow
+- EI / focus / session / AI features
+
+## What You Should Learn on 1CH First
+
+Before upgrading, be comfortable with:
+
+- safe power-on habits
+- how to recognize a stable serial connection
+- how to read raw vs. filtered waveforms
+- how EI and focus calibration behave in FreeBCI DAQ
+
+## Upgrade Checklist
+
+1. Finish the [1CH Focus Demo](/docs/hardware/spike-1ch-lh001/focus-demo)
+2. Review [Spike 8CH ADS1299](/docs/hardware/spike-8ch-ads1299)
+3. Prepare a full site-binding plan before streaming
+4. Validate signal quality channel by channel
+5. Revisit [Live Monitoring](/docs/freebci-daq/live-monitoring) and [Hardware Setup](/docs/freebci-daq/hardware-setup) with multichannel expectations
+
+## Next
+
+→ [Spike 8CH ADS1299](/docs/hardware/spike-8ch-ads1299)  
+→ [8CH Multichannel EEG Setup](/docs/hardware/spike-8ch-ads1299/multichannel-eeg-setup)

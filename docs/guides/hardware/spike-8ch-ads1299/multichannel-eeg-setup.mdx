@@ -1,0 +1,65 @@
+---
+sidebar_position: 3
+sidebar_label: 'Multichannel EEG Setup'
+---
+
+# 8CH Multichannel EEG Setup
+
+> Use this workflow when you want the full FreeBCI DAQ multichannel experience: multiple bound sites, multiple live waveforms, and richer monitoring.
+
+## What This Workflow Is For
+
+Use the 8CH path when:
+
+- you want multiple EEG channels active at the same time
+- you want one site binding per acquisition channel
+- you want a fuller monitoring view than the 1CH focus demo
+
+## DAQ Expectations
+
+Compared with the 1CH demo:
+
+- add a binding row for each active channel
+- confirm site names carefully before streaming
+- validate signal quality across channels, not just once globally
+
+## Recommended DAQ Path
+
+1. Open FreeBCI DAQ
+2. Confirm hardware parameters
+3. Add and confirm site bindings for each channel
+4. Open the wired serial connection
+5. Start collection
+6. Inspect the **Live** page channel by channel
+7. Review **Engagement & Focus** and other analysis surfaces once the stream is stable
+
+For the common platform steps, see [Connect to FreeBCI DAQ](/docs/hardware/connect-to-freebci-daq).
+
+## What You Should Validate
+
+Before treating a run as a valid multichannel session, confirm:
+
+- every intended channel is bound to the right site
+- waveforms are live and believable across channels
+- obvious bad channels are identified early
+- the session is stable enough for downstream analysis
+
+## FreeBCI DAQ Features That Matter More in 8CH
+
+These DAQ surfaces become more valuable once you move beyond 1CH:
+
+- [Live Monitoring](/docs/freebci-daq/live-monitoring)
+- [Hardware Setup](/docs/freebci-daq/hardware-setup)
+- [System & Tuning](/docs/freebci-daq/system-tuning)
+- [Tuning Guide](/docs/freebci-daq/tuning-guide)
+
+## Relationship to 1CH
+
+The 8CH workflow is not a different software platform. It is the next level of the same platform.
+
+If you have already completed the 1CH focus demo, most of the DAQ mechanics will feel familiar. The added work is in the hardware, channel mapping, and multichannel validation.
+
+## Next
+
+→ [Upgrade from 1CH to 8CH](/docs/hardware/upgrade-from-1ch-to-8ch)  
+→ [Live Monitoring](/docs/freebci-daq/live-monitoring)

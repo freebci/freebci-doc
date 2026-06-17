@@ -1,0 +1,77 @@
+---
+sidebar_position: 4
+sidebar_label: 'Manufacturing and Assembly'
+---
+
+# Manufacturing and Assembly
+
+> FreeBCI Spike is published as an open hardware release package for review, fabrication reference, and prototyping. It is not a full editable hardware source release.
+
+## What Is Published
+
+Each module release currently provides:
+
+- schematic PDF
+- Interactive BOM HTML
+- Gerber ZIP
+
+These are the main inputs for review, fabrication planning, and assembly reference.
+
+## What Is Not Published
+
+At this stage, public release files do **not** include:
+
+- editable EDA source projects
+- firmware source code
+- enclosure or mechanical files
+- production test procedures
+- fab qualification reports
+- regulatory documentation
+
+That means manufacturing and assembly remain an engineering activity that requires your own review and validation.
+
+## Recommended Reading Order
+
+1. Module README / overview page
+2. Schematic PDF
+3. Interactive BOM
+4. Gerber ZIP
+
+Use the Gerber package only after the earlier review steps are complete.
+
+## Before Ordering Boards
+
+Confirm:
+
+- the target module and release date
+- the contents of the Gerber package
+- connector and power context in the schematic
+- whether your board house needs extra drill, stackup, or note files
+
+## Assembly Guidance
+
+Use the Interactive BOM together with the schematic PDF.
+
+Pay special attention to:
+
+- polarity-sensitive parts
+- fine-pitch analog front-end soldering
+- connector orientation
+- battery-related circuits
+- visible solder bridges and opens
+
+## Traceability
+
+If you fabricate derived boards, keep your own:
+
+- build records
+- lot tracking
+- revision notes
+- bring-up notes
+
+Public release files are not a substitute for internal manufacturing control.
+
+## Next
+
+→ [Spike 1CH LH001](/docs/hardware/spike-1ch-lh001)  
+→ [Spike 8CH ADS1299](/docs/hardware/spike-8ch-ads1299)

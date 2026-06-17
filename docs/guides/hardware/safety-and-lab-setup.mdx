@@ -1,0 +1,70 @@
+---
+sidebar_position: 3
+sidebar_label: 'Safety and Lab Setup'
+---
+
+# Safety and Lab Setup
+
+> Read this before powering a board, attaching electrodes, or connecting any hardware to the human body.
+
+## Scope
+
+FreeBCI Spike release files and derived hardware are for:
+
+- research
+- education
+- engineering prototyping
+
+They are **not** a medical device package and are **not** intended for diagnosis, treatment, life support, or other high-risk medical use.
+
+## Human-Connection Rules
+
+If a test setup is connected to a person:
+
+- Prefer **battery-powered** operation
+- Use conservative electrical isolation
+- Avoid direct connection to mains-powered equipment
+- Avoid improvised grounding arrangements
+- Assess the **entire chain**: board, battery, USB interface, host computer, charger, and any lab instruments
+
+## Bring-Up Order
+
+Use a staged workflow:
+
+1. Inspect the board before power-on
+2. Power the board without electrodes attached
+3. Verify visible signs of healthy bring-up
+4. Connect the board to FreeBCI DAQ
+5. Confirm stable streaming
+6. Only then move to human-connected experiments
+
+Do not make your first validation step a body-connected test.
+
+## Lab Bench Checklist
+
+Before first power-on, confirm:
+
+- Correct module and release files
+- Clean solder joints and connector orientation
+- No visible shorts, reversed parts, or battery wiring mistakes
+- Stable battery or approved isolated power source
+- Clear separation between experimental hardware and mains-powered lab gear
+
+## USB Risk
+
+USB-powered development setups can create unsafe ground or leakage paths if used carelessly. Treat the host computer, charger, USB cable, and any connected instruments as part of the same risk surface.
+
+## Responsibility
+
+Whoever manufactures, assembles, modifies, or operates derived hardware is responsible for:
+
+- safety
+- validation
+- regulatory compliance
+- suitability for the intended test environment
+
+## Next
+
+→ [Manufacturing and Assembly](/docs/hardware/manufacturing-and-assembly)  
+→ [Spike 1CH LH001](/docs/hardware/spike-1ch-lh001)  
+→ [Spike 8CH ADS1299](/docs/hardware/spike-8ch-ads1299)

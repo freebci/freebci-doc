@@ -1,0 +1,45 @@
+---
+sidebar_position: 5
+sidebar_label: 'Connect to FreeBCI DAQ'
+---
+
+# Connect to FreeBCI DAQ
+
+> Both FreeBCI Spike 1CH LH001 and FreeBCI Spike 8CH ADS1299 connect to the same FreeBCI DAQ workflow.
+
+## You Will Need
+
+- **Chrome** or **Edge** on desktop
+- FreeBCI DAQ running on `localhost` or another secure HTTPS origin
+- A supported FreeBCI hardware module connected over USB serial
+- Hardware parameters and channel-to-site bindings ready
+
+## Shared DAQ Workflow
+
+1. Open FreeBCI DAQ
+2. Go to the **Setup** page
+3. Confirm hardware parameters
+4. Add site bindings
+5. Open the wired serial connection
+6. Start data collection
+7. Move to **Live** to inspect waveforms and spectra
+
+## Module-Specific Binding Expectations
+
+- For **1CH**, one bound acquisition site is enough to run the core focus / engagement demo
+- For **8CH**, bind every acquisition channel to its electrode site before starting serious analysis
+
+## DAQ Features Available to Both
+
+- live raw and filtered waveforms
+- FFT and band-power trends
+- Engagement Index trend
+- focus calibration
+- session recording
+- AI-assisted analysis
+
+## Recommended Next Steps
+
+- For beginners: [1CH Focus Demo](/docs/hardware/spike-1ch-lh001/focus-demo)
+- For multichannel EEG: [8CH Multichannel EEG Setup](/docs/hardware/spike-8ch-ads1299/multichannel-eeg-setup)
+- For platform details: [FreeBCI DAQ Overview](/docs/freebci-daq)

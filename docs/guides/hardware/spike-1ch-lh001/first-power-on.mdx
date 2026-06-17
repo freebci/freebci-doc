@@ -1,0 +1,52 @@
+---
+sidebar_position: 2
+sidebar_label: 'First Power-On'
+---
+
+# 1CH First Power-On
+
+> Bring the board up in stages. Do not make the first test a body-connected test.
+
+## Before Power-On
+
+Check:
+
+- board matches the intended module release
+- no visible solder bridges or reversed parts
+- connector orientation looks correct
+- battery wiring and polarity are correct
+- test area is isolated from unsafe mains-coupled lab setups
+
+## First Bring-Up Goal
+
+Your first goal is simple:
+
+- the board powers cleanly
+- it does not overheat
+- it remains stable long enough to connect to FreeBCI DAQ
+
+At this stage you are validating the **board**, not yet validating the biological signal path.
+
+## Recommended Bring-Up Sequence
+
+1. Power the board without electrodes attached
+2. Observe for obvious faults, instability, or heat
+3. Connect USB only as required for the isolated DAQ workflow
+4. Open FreeBCI DAQ and attempt a serial connection
+5. Confirm that the software sees a stable device
+
+## When to Stop
+
+Stop and inspect the setup if you see any of these:
+
+- unstable or repeated disconnects
+- signs of overheating
+- obvious assembly defects
+- behavior inconsistent with the expected module release
+
+Do not proceed to human-connected testing until these issues are resolved.
+
+## Next
+
+→ [Connect to FreeBCI DAQ](/docs/hardware/connect-to-freebci-daq)  
+→ [1CH Focus Demo](/docs/hardware/spike-1ch-lh001/focus-demo)

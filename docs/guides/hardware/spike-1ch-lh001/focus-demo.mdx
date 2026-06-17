@@ -1,0 +1,67 @@
+---
+sidebar_position: 3
+sidebar_label: 'Focus Demo'
+---
+
+# 1CH Focus Demo
+
+> This is the signature beginner workflow for FreeBCI Spike 1CH LH001: connect one channel, stream into FreeBCI DAQ, and run the Engagement Index / focus demo.
+
+## What You Are Demonstrating
+
+This workflow is designed to show:
+
+- the board can stream into FreeBCI DAQ
+- the signal path is stable enough for live analysis
+- FreeBCI DAQ can compute **Engagement Index**
+- the built-in **focus calibration** workflow can run end to end
+
+## Setup Expectation
+
+For the 1CH demo:
+
+- one effective acquisition channel is enough
+- one site binding is enough to complete the workflow
+- the emphasis is signal stability and EI / focus behavior, not spatial coverage
+
+## DAQ Path
+
+1. Open FreeBCI DAQ
+2. Confirm hardware parameters on **Setup**
+3. Add one acquisition site binding
+4. Open the wired connection
+5. Start collection
+6. Move to **Live**
+7. Move to **Engagement & Focus**
+
+If you want the generic platform steps first, see [Connect to FreeBCI DAQ](/docs/hardware/connect-to-freebci-daq).
+
+## What You Should See
+
+In a healthy demo run:
+
+- a live waveform appears on the **Live** page
+- filtered signal follows the raw signal with less visible noise
+- the FFT-based charts begin updating after the initial analysis window fills
+- the **EI** trend starts moving after the warmup and rolling windows are populated
+
+## Focus Calibration
+
+The 1CH module is a good fit for the built-in focus demo because the workflow is simple:
+
+1. Complete warmup
+2. Collect a baseline reference
+3. Start the active decision window
+4. Watch **Focused** / **Not focused** outputs update over time
+
+See [Engagement & Focus](/docs/freebci-daq/engagement-focus) for the platform details behind the state machine.
+
+## When to Move to 8CH
+
+Move to **8CH** when:
+
+- you want more than a single-channel demo
+- you need simultaneous coverage of multiple sites
+- you want richer multichannel monitoring and analysis
+
+Next step: [Upgrade from 1CH to 8CH](/docs/hardware/upgrade-from-1ch-to-8ch)
