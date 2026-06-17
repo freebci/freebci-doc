@@ -7,6 +7,11 @@ sidebar_label: 'Quick Start'
 
 > Go from zero to live EEG waveforms in under 5 minutes.
 
+Before you start, choose your hardware path:
+
+- [Spike 1CH LH001](/docs/hardware/spike-1ch-lh001) for the fastest focus / engagement demo
+- [Spike 8CH ADS1299](/docs/hardware/spike-8ch-ads1299) for fuller multichannel EEG setup
+
 ## You'll Need
 
 - **Chrome** or **Edge** on desktop (version 89+)
@@ -34,6 +39,8 @@ Scroll down to **Acquisition site binding**.
 3. Type a site name (e.g. `Fp1`, `Cz`, `O1`)
 4. Click **Confirm binding**
 
+For **1CH**, one confirmed binding is enough to run the core demo workflow. For **8CH**, add and confirm a binding for every active channel.
+
 ## Step 3: Open the Serial Port
 
 ![Connection panel](screenshots/panel-connection-en.png)
@@ -56,9 +63,10 @@ Click the **Live** tab in the left sidebar.
 
 ![Live monitoring](screenshots/live-en.png)
 
-You should see raw waveforms, filtered waveforms, and after 2 seconds — the spectrum histogram and EI trend appear.
+You should see live waveforms, filtered waveforms, and after 2 seconds — the spectrum histogram and EI trend appear.
 
 ## Next
 
+→ [Browse the hardware docs for 1CH and 8CH](/docs/hardware)  
 → [Configure hardware parameters in detail](/docs/freebci-daq/hardware-setup)
 → [Explore the live monitoring dashboard](/docs/freebci-daq/live-monitoring)

@@ -17,7 +17,7 @@ A: Yes, AGPL v3 open source.
 A: Core acquisition/analysis yes. AI features need internet (or local Ollama).
 
 **Q: What hardware is supported?**
-A: Any EEG device with USB serial (UART) using int24 binary protocol at 921600 baud.
+A: FreeBCI DAQ supports both **FreeBCI Spike 1CH LH001** and **FreeBCI Spike 8CH ADS1299**. The broader transport is USB serial (UART) using int24 binary protocol at 921600 baud.
 
 ## Browser
 
@@ -50,7 +50,7 @@ A: FFT needs a 2-second window of samples.
 A: Device warmup. Configurable via `VITE_INITIAL_UNRELIABLE`.
 
 **Q: Why is the heatmap incomplete?**
-A: Single effective channel (ch0). Builds from rolling site records.
+A: Most often because your site bindings are incomplete. In a **1CH** workflow, a single bound site only gives you a simplified demo view. In an **8CH** workflow, bind every active channel to its correct electrode site.
 
 **Q: How accurate is focus classification?**
 A: Binary approximation based on EI median comparison. Not medical grade.
@@ -69,7 +69,7 @@ A: No. Only pre-computed band power values (δ,θ,α,β,γ).
 ## Development
 
 **Q: Can I modify the code?**
-A: Yes, AGPL v3. See [Developer Guide](/docs/freebci-daq/reference/developer-guide) and [Dev Tutorials](/docs/freebci-daq/reference/developer-guide).
+A: Yes, AGPL v3. See [Developer Guide](/docs/freebci-daq/reference/developer-guide) and [Dev Tutorials](/docs/freebci-daq/dev).
 
 **Q: How do I run tests?**
 ```bash
