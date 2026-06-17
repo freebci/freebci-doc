@@ -1,0 +1,64 @@
+---
+sidebar_position: 1
+sidebar_label: '概览'
+---
+
+# FreeBCI Spike 1CH LH001
+
+> 面向 maker 和初学者的推荐起点：拿到第一个信号，熟悉整体工作流，并在 FreeBCI DAQ 中跑通专注度 / 参与度 Demo。
+
+## 产品定位
+
+FreeBCI Spike 1CH LH001 是 FreeBCI 硬件体系中的**入门模块**。
+
+它最适合：
+
+- 第一次接触 EEG 或生物电采集
+- 课堂和实验室演示
+- 快速验证信号链路
+- 在 FreeBCI DAQ 中跑通专注度 / 参与度 Demo
+
+## 公开发布内容
+
+当前公开资料包包括：
+
+- 原理图 PDF
+- Interactive BOM HTML
+- Gerber ZIP
+
+当前**不包括**可编辑 EDA 源文件、固件源码、量产测试流程或监管文档。
+
+## 已知接口标识
+
+| 标识 | 含义 |
+|---|---|
+| `EEG` | 信号电极输入 |
+| `REF` | 参考电极输入 |
+| `RLD` | 右腿驱动 / 共模反馈电极 |
+| `BAT` | 电池连接 |
+| `NTC` | 电池温度检测 |
+| `GND` | 地 |
+| `USB-C` | 供电 / 充电接口 |
+| `BOOT` | Boot 模式按键 |
+| `RST` | 复位按键 |
+
+## 什么算成功
+
+这个模块的成功首轮路径是：
+
+1. 板卡上电正常
+2. FreeBCI DAQ 能通过 USB 串口打开设备
+3. 看到稳定的单通道波形
+4. EI 趋势开始更新
+5. 完成一个简单的专注度校准 Demo
+
+## 推荐路径
+
+1. 阅读 [安全与实验室环境](/zh/docs/hardware/safety-and-lab-setup)
+2. 阅读 [连接到 FreeBCI DAQ](/zh/docs/hardware/connect-to-freebci-daq)
+3. 运行 [1CH 专注度 Demo](/zh/docs/hardware/spike-1ch-lh001/focus-demo)
+
+## 外部发布文件
+
+- [FreeBCI Spike 仓库](https://github.com/freebci/freebci-spike)
+- [Spike 1CH LH001 模块发布页](https://github.com/freebci/freebci-spike/tree/main/hardware/spike-1ch-lh001)

@@ -1,0 +1,8 @@
+{
+  "label": "Spike 8CH ADS1299",
+  "position": 11,
+  "link": {
+    "type": "doc",
+    "id": "hardware/spike-8ch-ads1299/index"
+  }
+}

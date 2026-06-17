@@ -1,0 +1,144 @@
+---
+sidebar_position: 4
+sidebar_label: '添加面板'
+---
+
+# 3. 添加面板
+
+> 目标：创建一个新的 React 组件，把它注册到 `App.tsx`，补上 i18n 文案，并订阅数据源。
+
+## 场景
+
+你想在 Live 页面新增一个 **“Latest EI Value”** 卡片，用大号文本显示当前的参与度指数。
+
+## 第一步：创建组件
+
+创建 `src/components/LatestEICard.tsx`：
+
+```tsx
+import { useEegStore } from '../store/eegStore';
+import type { Locale } from '../i18n';
+import { t } from '../i18n';
+import { Card, CardHeader, CardBody } from './ui';
+
+interface LatestEICardProps {
+  locale: Locale;
+}
+
+export function LatestEICard({ locale }: LatestEICardProps) {
+  const smoothEI = useEegStore((s) => s.smoothEngagementResults.at(-1)?.ei ?? null);
+
+  return (
+    <Card>
+      <CardHeader eyebrow="Realtime" title="Latest EI" />
+      <CardBody>
+        {smoothEI !== null ? (
+          <p className="font-mono text-[2rem] tabular text-ink">
+            {smoothEI.toFixed(3)}
+          </p>
+        ) : (
+          <p className="text-meta">{t(locale, 'analysis.waiting')}</p>
+        )}
+      </CardBody>
+    </Card>
+  );
+}
+```
+
+### 关键点
+
+- **`locale` prop**：每个面板都接收 `locale: Locale`，用于双语支持
+- **`useEegStore`**：从 Zustand 中订阅实时数据，`s.at(-1)` 用来获取数组最后一个元素
+- **`Card / CardHeader / CardBody`**：统一的 UI 原语，新增面板时应优先复用
+- **`t(locale, key)`**：避免写死英文文案，缺 key 时先补到 `i18n.ts`
+
+## 第二步：添加 i18n 键
+
+打开 `src/i18n.ts`，在 `en-US` 中加入：
+
+```typescript
+'latestEi.eyebrow': 'Realtime',
+'latestEi.title': 'Latest EI',
+```
+
+在 `zh-CN` 中加入：
+
+```typescript
+'latestEi.eyebrow': '实时',
+'latestEi.title': '最新 EI',
+```
+
+然后更新组件：
+
+```tsx
+<CardHeader
+  eyebrow={t(locale, 'latestEi.eyebrow')}
+  title={t(locale, 'latestEi.title')}
+/>
+```
+
+TypeScript 会检查是否写错 key。`TranslationKey` 是所有可用翻译键的联合类型。
+
+## 第三步：注册到 App.tsx
+
+打开 `src/App.tsx`，顶部引入：
+
+```typescript
+import { LatestEICard } from './components/LatestEICard';
+```
+
+找到 `activePage === 'live'` 对应的渲染块，把新卡片插进去：
+
+```tsx
+{activePage === 'live' && (
+  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+    <div className="flex min-w-0 flex-col gap-4">
+      <LatestEICard locale={locale} />
+      <LiveWindowControlPanel locale={locale} />
+      <BrainHeatmapPanel locale={locale} />
+      {/* ... existing panels ... */}
+    </div>
+    <AiAnalysisSidebar locale={locale} ... />
+  </div>
+)}
+```
+
+### 布局注意点
+
+- Live 页面是一个 **双栏 grid**：`xl:grid-cols-[minmax(0,1fr)_22rem]`
+- 左侧列上的 `min-w-0` 很关键，用来避免 Tailwind flex 子项溢出
+- AI 侧栏是 `xl:sticky`，滚动时保持可见
+
+## 第四步：验证
+
+```bash
+npm run typecheck
+npm run dev
+```
+
+如果 `npm test` 也通过，说明这个新面板已经正确接入。
+
+## 参考模式：现有面板如何订阅数据
+
+| 面板 | 数据来源 | 模式 |
+|---|---|---|
+| `AlgorithmTrendPanel` | `useEegStore(s => s.smoothEngagementResults)` | Zustand selector |
+| `RawWaveformPanel` | `rawWaveformBus.copyLatest()` | 观察者总线 + `requestAnimationFrame` |
+| `BrainHeatmapPanel` | `useEegStore(s => s.bandPowerHistory)` | Zustand selector |
+| `AiAnalysisSidebar` | `useAiStore(s => s.analysisOutput)` | Zustand selector |
+
+经验法则：
+
+- 如果面板要以显示刷新率读取 250 Hz 数据 → 用 **observer bus**
+- 如果面板只在分析速率（0.5 秒或更慢）更新 → 用 **Zustand**
+
+## 常见错误
+
+1. 忘记接收 `locale` prop
+2. 写死英文字符串，没有走 `t(locale, key)`
+3. 新面板没有用 `Card` 结构包裹，导致 UI 风格不一致
+4. Zustand selector 选得太大，例如直接 `useEegStore()`，会导致频繁重渲染
+
+## 接下来
+
+→ [向分析管线添加一个新算法](/zh/docs/freebci-daq/dev/add-an-algorithm)

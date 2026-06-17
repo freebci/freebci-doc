@@ -1,0 +1,200 @@
+---
+sidebar_position: 6
+sidebar_label: '串口协议'
+---
+
+# 5. 串口协议
+
+> 目标：理解 `EEGRST / EEGCFG / SW,START` 初始化顺序，以及二进制包解析器的内部结构。
+
+## 涉及的文件
+
+| 文件 | 作用 |
+|---|---|
+| `src/serial/webSerialAdapter.ts` | `navigator.serial` 封装：打开、关闭、读取、写入 |
+| `src/serial/serialInitialization.ts` | `EEGRST` + `EEGCFG` 指令时序 |
+| `src/serial/serialAcquisitionSwitch.ts` | `SW,START / SW,STOP` 指令 |
+| `src/serial/serialHardwareConfig.ts` | 硬件参数编码 |
+| `src/serial/serialProtocolCore.ts` | 包序号运算（回绕、丢包检测） |
+| `src/serial/serialEegProtocol.ts` | 二进制帧解析器（int24 解码） |
+| `src/serial/serialConnectionSession.ts` | 管理 reader 循环和数据流生命周期 |
+| `src/config/serial.ts` | 波特率、ACK 超时、停滞超时配置 |
+
+## 连接顺序
+
+```text
+Browser                          Device
+   │                                │
+   ├─ requestPort() ───────────────▶│  浏览器弹出设备选择器
+   │                                │
+   ├─ port.open({ baudRate: 921600 })─▶
+   │                                │
+   ├─ EEGRST ──────────────────────▶│  重置固件状态
+   │◀──────── ACK ─────────────────┤  （2 秒超时）
+   │                                │
+   ├─ EEGCFG(params) ──────────────▶│  配置硬件参数
+   │◀──────── ACK ─────────────────┤  （2 秒超时）
+   │                                │
+   ├─ SW,START ────────────────────▶│  开始采样
+   │◀──────── ACK ─────────────────┤  （2 秒超时）
+   │                                │
+   │◀──── binary packets ──────────┤  250 Hz int24 样本
+   │◀──── binary packets ──────────┤
+   │◀──── binary packets ──────────┤
+```
+
+### 超时配置
+
+```typescript
+export const EEG_SERIAL_RESET_ACK_TIMEOUT_MS = 2_000;
+export const EEG_SERIAL_CONFIG_ACK_TIMEOUT_MS = 2_000;
+export const EEG_SERIAL_SWITCH_ACK_TIMEOUT_MS = 2_000;
+export const EEG_SERIAL_STALLED_TIMEOUT_MS = 2_000;
+```
+
+如果任何一个 ACK 超时，连接都会中断，并写入诊断日志。
+
+## 序列号处理
+
+**文件**：`src/serial/serialProtocolCore.ts`
+
+每个二进制包都带有一个序列号，解析器用它来做两件事：
+
+### 丢包检测
+
+```typescript
+export function countForwardSerialDeviceSeqGap(
+  expectedSeq: number,
+  actualSeq: number,
+): number {
+  const gap = (actualSeq - expectedSeq) >>> 0;
+  if (gap === 0 || gap > 0x7fff_ffff) return 0;
+  return gap;
+}
+```
+
+非零 gap 表示丢包，诊断中会记录：
+
+> “Serial packet sequence jumped; N packets were missed.”
+
+### 回绕
+
+序列号为 `uint32`，在 `0xFFFFFFFF` 之后回绕：
+
+```typescript
+export function getNextSerialDeviceSeq(seq: number): number {
+  return (seq + 1) >>> 0;
+}
+```
+
+## 二进制帧解析器
+
+**文件**：`src/serial/serialEegProtocol.ts`
+
+解析器从串口流中寻找帧边界。每一帧通常包含：
+
+```text
+[header/sync] [seq_num] [payload: int24 × N_channels] [checksum/footer]
+```
+
+### Int24 解码
+
+EEG 样本以 24 位有符号整数（每样本 3 字节）编码。解析器会把它转成 JavaScript 数字：
+
+```typescript
+function decodeInt24(bytes: Uint8Array, offset: number): number {
+  const b0 = bytes[offset];
+  const b1 = bytes[offset + 1];
+  const b2 = bytes[offset + 2];
+  let value = (b0 << 16) | (b1 << 8) | b2;
+  if (value & 0x800000) value |= 0xFF000000;
+  return value;
+}
+```
+
+### 输出结构
+
+```typescript
+interface ParsedBatch {
+  samples: number[][];    // samples[channelIndex][sampleIndex]
+  packetSeq: number;
+  invalid?: boolean;      // 帧格式异常时标记
+}
+```
+
+格式无效的包会被计数，但不会继续进入后续数据链路。
+
+## 如何适配不同硬件
+
+如果你的设备协议不同，可按下面步骤适配：
+
+1. 在 `src/serial/` 中创建新的解析器，参考 `serialEegProtocol.ts`
+2. 在 `src/hooks/useAcquisitionActions.ts` 中替换解析器实例化逻辑
+3. 如果配置命令格式不同，更新 `serialHardwareConfig.ts`
+4. 如果波特率不同，修改 `src/config/serial.ts`
+5. 如果错误条件不同，更新诊断消息与 `src/i18n.ts`
+
+### 解析器接口
+
+```typescript
+interface EegProtocolParser {
+  feedChunk(chunk: Uint8Array): ParsedBatch[];
+  reset(): void;
+}
+```
+
+你的解析器必须实现 `feedChunk`。reader 循环会把串口原始字节块传进去，返回解析出的 batch 数组（如果没有完整帧，可以返回空数组）。
+
+## Reader 循环生命周期
+
+**文件**：`src/serial/serialConnectionSession.ts`
+
+```typescript
+while (streamActive) {
+  const { value, done } = await reader.read();
+  if (done) break;
+
+  const batches = parser.feedChunk(value);
+  for (const batch of batches) {
+    if (batch.invalid) {
+      diagnostics.logInvalidPacket();
+      continue;
+    }
+    const gap = countForwardSerialDeviceSeqGap(lastSeq, batch.packetSeq);
+    if (gap > 0) diagnostics.logPacketGap(gap);
+
+    for (const [ch, samples] of batch.samples.entries()) {
+      for (const s of samples) {
+        rawWaveformBus.push(s, `ch${ch}`);
+      }
+    }
+
+    handleBatch(batch);
+  }
+}
+```
+
+### 停滞检测
+
+如果在 `EEG_SERIAL_STALLED_TIMEOUT_MS`（2 秒）内没有收到任何有效 batch，数据流状态会变成 **STALLED**。数据恢复时会自动恢复。
+
+## 添加诊断信息
+
+所有诊断事件最终都通过 `src/store/eegStore.ts` 进入 store：
+
+```typescript
+useEegStore.getState().pushDiagnostic({
+  id: crypto.randomUUID(),
+  phase: 'Serial connection',
+  status: 'error',
+  message: 'Serial packet sequence jumped; 3 packets were missed.',
+  detail: `Expected seq ${expected}, got ${actual}`,
+  timestamp: Date.now(),
+});
+```
+
+如果你在 parser 或 reader loop 中增加了新事件，请通过 `pushDiagnostic` 输出。它们会出现在诊断抽屉和 System 页面中。
+
+## 接下来
+
+→ [理解 Zustand 与 refs 的边界](/zh/docs/freebci-daq/dev/state-management)

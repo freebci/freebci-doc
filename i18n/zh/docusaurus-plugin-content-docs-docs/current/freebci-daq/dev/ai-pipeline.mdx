@@ -1,0 +1,233 @@
+---
+sidebar_position: 9
+sidebar_label: 'AI 管线'
+---
+
+# 8. AI 管线
+
+> 目标：理解五频段 EEG 特征如何被写入 IndexedDB、如何作为 LLM 上下文被读取，以及结果如何以结构化分析形式流式返回。
+
+## 架构
+
+```text
+FFT 输出（每 0.5 秒）
+  │
+  ├──→ 频带功率（δ、θ、α、β、γ）
+  │
+  ├──→ writeFeatureFrame() → IndexedDB（持久化）
+  │
+  └──→ [用户发起问题]
+            │
+            ├──→ getActiveAiFrames() → 从 IndexedDB 读取
+            ├──→ bucketBandFrames() + summarizeBandFrames()
+            ├──→ 构建带上下文的 prompt
+            ├──→ 调用 LLM API（流式）
+            └──→ 解析响应 → 推理 / 证据 / 建议 / 说明
+```
+
+## 涉及的文件
+
+| 文件 | 作用 |
+|---|---|
+| `src/ai/agentPipeline.ts` | 顶层编排：组装帧、调用 LLM、解析输出 |
+| `src/ai/protocol.ts` | 五频段帧、分析输出、会话元数据的 Zod schema |
+| `src/ai/indexedDb.ts` | IndexedDB CRUD：写帧、读帧、会话生命周期 |
+| `src/ai/conversationRuntime.ts` | 当前会话状态和帧缓冲 |
+| `src/ai/bandStats.ts` | 按时间窗口分桶、检测异常 |
+| `src/ai/bandFeatures.ts` | 归一化频带值、计算比值 |
+| `src/ai/fiveBandInference.ts` | 基于频带趋势做专注度推断 |
+| `src/ai/modelProvider.ts` | 兼容 OpenAI 接口的 LLM client 工厂 |
+| `src/ai/modelPresets.ts` | 预置 provider URL 与模型 ID |
+| `src/ai/questionIntent.ts` | 解析问题意图，决定分析范围 |
+| `src/ai/naturalReport.ts` | 把结构化分析转成人类可读文本 |
+| `src/ai/zipBundle.ts` | 会话 JSON 导出 / 导入 |
+| `src/store/aiStore.ts` | AI 状态的 Zustand store |
+
+## 第一步：记录特征帧
+
+当启用五频段录制并开始流式采集时：
+
+```typescript
+interface BandFeatureFrameV1 {
+  timestampMs: number;
+  bandPowers: {
+    delta: number;
+    theta: number;
+    alpha: number;
+    beta: number;
+    gamma: number;
+  };
+  channelName: string;
+  bindingId: string;
+}
+```
+
+每 0.5 秒会生成一帧，经过 Zod 校验后写入 IndexedDB：
+
+```typescript
+async function appendFrame(db: IDBDatabase, frame: BandFeatureFrameV1): Promise<void> {
+  const tx = db.transaction(STORE_FRAMES, 'readwrite');
+  const store = tx.objectStore(STORE_FRAMES);
+  store.add(frame);
+  await transactionDone(tx);
+}
+```
+
+## 第二步：IndexedDB 结构
+
+**数据库名**：`eeg-ai-conversation-{conversationId}`
+
+| Object Store | Key | 内容 |
+|---|---|---|
+| `bandFeatureFrames` | 自增键 | `BandFeatureFrameV1` |
+| `conversationMeta` | `"meta"` | `ConversationMetaV1` |
+
+**保留策略**：超过 10 分钟的帧会在写入时被修剪。
+
+```typescript
+const RETENTION_MS = 10 * 60 * 1000;
+```
+
+每个会话对应一个独立数据库，而不是同库多 store，这样能保持会话隔离。
+
+## 第三步：为 LLM 取回上下文
+
+当用户点击 “Answer question” 时：
+
+```typescript
+async function runAnalysis(request: AiAnalysisRequestV1) {
+  const frames = await getActiveAiFrames(request.conversationId, request.timeRange);
+  const buckets = bucketBandFrames(frames, DEFAULT_CONTEXT_BUCKET_MS);
+  const summary = summarizeBandFrames(buckets);
+  const anomalies = detectBandAnomalies(buckets);
+
+  const prompt = buildPrompt({
+    userGoal: request.userGoal,
+    bandSummary: summary,
+    anomalies,
+    timeRange: request.timeRange,
+  });
+
+  const model = createLanguageModel(useAiStore.getState().modelConfig);
+  const stream = await model.streamText({ prompt });
+
+  for await (const chunk of stream) {
+    // 累积流式文本并解析
+  }
+}
+```
+
+## 第四步：模型提供方抽象
+
+**文件**：`src/ai/modelProvider.ts`
+
+使用 `@ai-sdk/openai-compatible`（Vercel AI SDK）统一对接 OpenAI、DeepSeek、Ollama 以及自定义端点：
+
+```typescript
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+
+export function createLanguageModel(config: AiModelConfig) {
+  const provider = createOpenAICompatible({
+    name: config.provider,
+    baseURL: config.baseUrl,
+    apiKey: config.apiKey || undefined,
+  });
+
+  return provider.chat(config.modelId, {
+    temperature: config.temperature,
+  });
+}
+```
+
+### 添加新的 provider
+
+修改 `src/ai/modelPresets.ts`：
+
+```typescript
+export const MODEL_PRESETS = [
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1' },
+  { id: 'ollama', name: 'Ollama', baseUrl: 'http://localhost:11434/v1' },
+  { id: 'custom', name: 'Custom', baseUrl: '' },
+  { id: 'your-new', name: 'YourNew', baseUrl: 'https://your.api.com/v1' },
+];
+```
+
+如果 UI 要显示 provider 名称，别忘了补 `src/i18n.ts`。
+
+## 第五步：响应解析
+
+LLM 的流式响应会被拆成四个结构化部分：
+
+```text
+[REASONING]
+...
+
+[EVIDENCE]
+...
+
+[SUGGESTIONS]
+...
+
+[NOTES]
+...
+```
+
+**文件**：`src/ai/naturalReport.ts`  
+负责把结构化 `AiAnalysisOutputV1` 转换为人类可读文本。
+
+## 第六步：AI 驱动的专注度推断
+
+**文件**：`src/ai/fiveBandInference.ts`
+
+AI 管线里还包含一个不依赖 LLM 的规则式专注度推断：
+
+```typescript
+export function getFocusInference(
+  bandMeanMap: Map<BandMetric, number>,
+  alertThreshold: number,
+): { focused: boolean; confidence: number } {
+  const beta = bandMeanMap.get('beta') ?? 0;
+  const alpha = bandMeanMap.get('alpha') ?? 0;
+  const theta = bandMeanMap.get('theta') ?? 0;
+  const ei = beta / (alpha + theta);
+
+  return {
+    focused: ei > alertThreshold,
+    confidence: Math.min(1, Math.max(0, (ei - alertThreshold) / alertThreshold)),
+  };
+}
+```
+
+这部分在本地运行，不走 API，并参与 Algorithms 页面中的专注度判断。
+
+## 会话导出 / 导入
+
+**文件**：`src/ai/zipBundle.ts`
+
+```typescript
+export async function createStoredZip(conversationId: string): Promise<Uint8Array> {
+  const meta = await readMeta(db);
+  const frames = await readAllFrames(db);
+  return bundle;
+}
+
+export async function readStoredZip(bundle: Uint8Array): Promise<{
+  meta: ConversationMetaV1;
+  frames: BandFeatureFrameV1[];
+}> {
+  // 解析 bundle 并返回内容
+}
+```
+
+## 常见错误
+
+1. 没有开启五频段录制，导致 AI 分析拿不到帧
+2. 期望在 FFT 窗口填满前就得到分析结果
+3. 误以为原始 250 Hz EEG 波形会发送给 LLM
+4. 没有优雅处理模型超时、限流或 CORS 错误
+5. IndexedDB 事务冲突处理不当
+
+## 接下来
+
+→ [添加翻译键与主题定制](/zh/docs/freebci-daq/dev/i18n-and-theme)

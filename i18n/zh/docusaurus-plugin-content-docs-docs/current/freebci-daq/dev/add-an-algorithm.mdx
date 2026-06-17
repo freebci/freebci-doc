@@ -1,0 +1,150 @@
+---
+sidebar_position: 5
+sidebar_label: '添加算法'
+---
+
+# 4. 添加算法
+
+> 目标：编写一个新的 EEG 指标公式，把它接入 FFT 分析循环，在 Zustand 中平滑结果，并显示到图表上。
+
+## 场景
+
+你想新增一个 **Alpha/Theta Ratio**（放松指数），让它和现有的 Engagement Index（Beta / (Alpha + Theta)）一起显示。
+
+## 第一步：编写算法函数
+
+创建 `src/algorithms/relaxationIndex.ts`：
+
+```typescript
+/*
+ * Relaxation Index = α / (α + β)
+ *
+ * 值越高 → 越放松（alpha 占主导）
+ * 值越低 → 越警觉（beta 占主导）
+ */
+import type { EegBandPowers } from '../types/eeg';
+
+export function calculateRelaxationIndex(bandPowers: EegBandPowers): number | null {
+  const denominator = bandPowers.alpha + bandPowers.beta;
+  if (denominator <= 0) return null;
+  return bandPowers.alpha / denominator;
+}
+```
+
+### 算法文件约定
+
+- 放在 `src/algorithms/` 下
+- 一般一类算法一个文件
+- 在注释中写明公式和参考来源
+- 当分母无效时返回 `null`
+- 输入类型统一使用 `EegBandPowers`
+
+## 第二步：接入分析循环
+
+EEG 频域分析器（`src/analysis/eegFrequencyAnalysis.ts`）会在每个 FFT 窗口中计算频带功率。找到 `calculateEngagementIndex` 的调用处，把新函数加进去：
+
+```typescript
+import { calculateRelaxationIndex } from '../algorithms/relaxationIndex';
+
+const bandPowers = computeBandPowers(fftOutput);
+const ei = calculateEngagementIndex(bandPowers);
+const ri = calculateRelaxationIndex(bandPowers);
+
+useEegStore.getState().pushEngagementResult({
+  timestamp: Date.now(),
+  ei,
+  ri,
+  bandPowers,
+});
+```
+
+### 同时更新结果类型
+
+在 `src/types/eeg.ts` 中补上字段：
+
+```typescript
+export interface EngagementResult {
+  timestamp: number;
+  ei: number | null;
+  ri: number | null;
+  bandPowers: EegBandPowers;
+}
+```
+
+## 第三步：在 Zustand 中做平滑
+
+打开 `src/store/eegStore.ts`。其中 `smoothEngagementResults` 用来保存经过 EMA 平滑的结果。
+
+在处理新结果时，为你的指标补上平滑逻辑：
+
+```typescript
+const prev = state.smoothEngagementResults.at(-1);
+const prevRI = prev?.ri ?? rawResult.ri;
+
+const smoothedRI = rawResult.ri !== null && prevRI !== null
+  ? EEG_ENGAGEMENT_EMA_ALPHA * rawResult.ri + (1 - EEG_ENGAGEMENT_EMA_ALPHA) * prevRI
+  : rawResult.ri ?? prevRI;
+```
+
+`EEG_ENGAGEMENT_EMA_ALPHA` 可以通过 `VITE_EMA_ALPHA` 或高级调参面板配置。
+
+## 第四步：显示到趋势图中
+
+`AlgorithmTrendPanel`（`src/components/AlgorithmTrendPanel.tsx`）使用 SVG 渲染 EI 趋势。你可以加一条新的曲线：
+
+```tsx
+const riPoints = results
+  .filter(r => r.ri !== null)
+  .map(r => ({ x: scaleX(r.timestamp), y: scaleY(r.ri!) }));
+
+<path
+  d={lineGenerator(riPoints)}
+  stroke="var(--color-success)"
+  strokeWidth={1.5}
+  strokeDasharray="4 3"
+  fill="none"
+/>
+```
+
+然后再补一个图例：
+
+```tsx
+<text fill="var(--color-success)" fontSize={10}>
+  Relaxation Index (α / (α+β))
+</text>
+```
+
+## 第五步：验证
+
+```bash
+npm run typecheck
+npm run test:unit
+npm run dev
+```
+
+验证时重点看：
+
+- 类型定义是否完整
+- 原有测试是否仍通过
+- 连接硬件后图表是否出现第二条线
+
+## 模式总结
+
+| 步骤 | 文件 | 要做什么 |
+|---|---|---|
+| 1. 公式 | `src/algorithms/yourMetric.ts` | 写一个纯函数：频带功率 → 指标 |
+| 2. 接入 | `src/analysis/eegFrequencyAnalysis.ts` | 在 FFT 输出处理处调用 |
+| 3. 平滑 | `src/store/eegStore.ts` | 做 EMA 平滑并写入 store |
+| 4. 展示 | `src/components/YourPanel.tsx` | 订阅 store 并渲染图表 |
+| 5. i18n | `src/i18n.ts` | 为新 UI 补标签 |
+
+## 如果算法需要额外参数
+
+1. 在 `.env.example` 中添加 `VITE_YOUR_PARAM`
+2. 在 `src/config/eeg.ts` 中按 `resolveNumber` 模式解析
+3. 在高级调参面板中暴露该参数
+4. 在 `TUNING.md` 中补文档
+
+## 接下来
+
+→ [理解串口协议内部实现](/zh/docs/freebci-daq/dev/serial-protocol)

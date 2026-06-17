@@ -1,0 +1,56 @@
+---
+sidebar_position: 6
+sidebar_label: '从 1CH 升级到 8CH'
+---
+
+# 从 1CH 升级到 8CH
+
+> 推荐的产品路径很简单：先完成单通道成功体验，再在同一套 DAQ 平台上升级到完整多通道 EEG。
+
+## 为什么先从 1CH 开始
+
+1CH 是更快的入门路径：
+
+- bring-up 更简单
+- 需要排查的连接更少
+- 更容易学习信号质量判断
+- 更快跑通 **参与度指数** 与 **专注度** Demo
+
+## 升级到 8CH 后会发生什么变化
+
+DAQ 软件流程仍然熟悉，但硬件流程会明显更复杂：
+
+- 电极连接更多
+- 点位绑定更多
+- 通道错位或噪声问题更多
+- 实时监测与多通道解释更丰富
+
+## 不会变化的部分
+
+- FreeBCI DAQ 界面
+- 浏览器要求
+- Web Serial 连接模型
+- 实时监测流程
+- EI / 专注度 / 会话 / AI 功能
+
+## 在 1CH 中你应该先掌握什么
+
+在升级之前，建议先熟悉：
+
+- 安全上电习惯
+- 如何识别稳定串口连接
+- 如何阅读原始波形与滤波波形
+- FreeBCI DAQ 中 EI 和专注度校准的表现
+
+## 升级检查清单
+
+1. 先完成 [1CH 专注度 Demo](/zh/docs/hardware/spike-1ch-lh001/focus-demo)
+2. 阅读 [Spike 8CH ADS1299](/zh/docs/hardware/spike-8ch-ads1299)
+3. 在开始采集前，先准备完整的点位绑定方案
+4. 逐通道验证信号质量
+5. 以多通道视角重新检查 [实时监测](/zh/docs/freebci-daq/live-monitoring) 和 [硬件配置](/zh/docs/freebci-daq/hardware-setup)
+
+## 接下来
+
+→ [Spike 8CH ADS1299](/zh/docs/hardware/spike-8ch-ads1299)  
+→ [8CH 多通道 EEG 搭建](/zh/docs/hardware/spike-8ch-ads1299/multichannel-eeg-setup)

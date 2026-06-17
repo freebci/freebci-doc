@@ -1,0 +1,195 @@
+---
+sidebar_position: 3
+sidebar_label: '架构导览'
+---
+
+# 2. 架构导览
+
+> 目标：跟踪一个 EEG 样本，从 USB 线进入系统，到最终变成屏幕上的一个像素。
+
+## 完整数据链路
+
+```text
+USB → Web Serial → Binary Parser → rawWaveformBus → Canvas（原始波形）
+                                      │
+                                      ├──→ Butterworth IIR → filteredWaveformBus → Canvas（滤波后）
+                                      │
+                                      └──→ FFT Analyzer（2 秒窗口）
+                                              │
+                                              ├──→ 频带功率 → EI 趋势（Zustand）
+                                              ├──→ 频带功率 → 专注度分类器
+                                              ├──→ 频带功率 → 脑区热力图
+                                              └──→ 五频段帧 → IndexedDB → AI Agent
+```
+
+## 第一步：串口数据到达
+
+**文件**：`src/serial/serialEegProtocol.ts`
+
+串口读取循环从 `navigator.serial` 接收原始字节。解析器会：
+
+1. 从串口中读取字节块
+2. 在二进制流中寻找帧边界
+3. 提取每个通道的 **int24** 样本值
+4. 校验包序号以检测丢包
+
+```typescript
+// 简化后的输出结构
+interface EegBatch {
+  samples: number[][];    // samples[channel][sampleIndex]
+  packetSeq: number;
+  timestamp: number;
+}
+```
+
+每个 batch 会交给 `useAcquisitionActions`，再由它继续向后分发。
+
+**关键文件**：`src/hooks/useAcquisitionActions.ts`  
+这是整个中央状态机，负责 reader、parser、file handle 和 analyzer refs。
+
+## 第二步：波形总线
+
+**文件**：`src/state/waveformBus.ts`、`src/state/rawWaveformBus.ts`
+
+解析完成后，每个样本会被推入一个**观察者总线**：
+
+```typescript
+// src/state/waveformBus.ts（简化）
+export function createWaveformBus(): WaveformBus {
+  const buffers = new Map<string, Float32Array>();  // 每通道一个 ring buffer
+  const writeIndexes = new Map<string, number>();
+
+  return {
+    push(value, channelName) {
+      const buf = buffers.get(channelName);
+      const idx = writeIndexes.get(channelName);
+      buf[idx % CAPACITY] = value;     // 环形写入
+      writeIndexes.set(channelName, idx + 1);
+    },
+    copyLatest(out, count, channelName) {
+      // 将最近 count 个样本拷贝到 out
+    },
+  };
+}
+```
+
+这个总线本质上是一个 **600 秒容量的 ring buffer**（250 Hz 时约 150,000 个样本）。当前存在两个单例：
+
+- `src/state/rawWaveformBus.ts` — 原始数据
+- `src/state/filteredWaveformBus.ts` — 滤波后数据
+
+**为什么不用 Zustand 存 250 Hz 数据？**  
+因为那会触发每秒 250 次 React 重渲染，性能不可接受。总线绕开 React，直接通过 `requestAnimationFrame` 喂给 Canvas。
+
+## 第三步：波形渲染
+
+**文件**：`src/components/WaveformPanel.tsx`
+
+`RawWaveformPanel` 和 `FilteredWaveformPanel` 都包装在同一个共享组件上。渲染循环大概是这样：
+
+```typescript
+function drawLoop() {
+  const samples = new Float32Array(windowSamples);
+  bus.copyLatest(samples, windowSamples, channelName);
+
+  ctx.clearRect(0, 0, width, height);
+  ctx.beginPath();
+  for (let i = 0; i < samples.length; i++) {
+    const x = (i / samples.length) * width;
+    const y = scaleToPixel(samples[i]);
+    ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  animFrameId = requestAnimationFrame(drawLoop);
+}
+```
+
+这段逻辑运行在显示刷新率（大约 60 fps），而不是 250 Hz。  
+总线的 `copyLatest` 会在每次绘制时提取最近的 N 个样本，不管这段时间里累积了多少新数据。
+
+## 第四步：IIR 滤波
+
+**文件**：`src/analysis/butterworthFilter.ts`
+
+原始数据推入原始总线后，同一批数据还会进入一个 **4 阶 Butterworth IIR 带通滤波器**：
+
+```text
+原始样本 → [高通阶段] → [低通阶段] → filteredWaveformBus.push()
+```
+
+滤波器采用 **Direct Form II** 拓扑以获得更好的数值稳定性。  
+当用户在 Setup 页面修改截止频率时，滤波器系数会被重新计算。
+
+## 第五步：FFT 分析
+
+**文件**：`src/analysis/eegFrequencyAnalysis.ts`
+
+滤波后的数据进入滑动 FFT 窗口：
+
+| 参数 | 值 |
+|---|---|
+| 窗口时长 | 2 秒（500 样本） |
+| 步长 | 0.5 秒（125 样本） |
+| FFT 大小 | 512 点 |
+| 窗函数 | Hann |
+
+频带功率通过对各频率段的 FFT 幅值求和得到：
+
+| 频带 | 范围（Hz） |
+|---|---|
+| Delta | 0.5 – 4 |
+| Theta | 4 – 8 |
+| Alpha | 8 – 13 |
+| Beta | 13 – 30 |
+| Gamma | 30 – 50 |
+
+## 第六步：参与度指数
+
+**文件**：`src/algorithms/engagementIndex.ts`
+
+```typescript
+export function calculateEngagementIndex(bandPowers: EegBandPowers): number | null {
+  const denominator = bandPowers.alpha + bandPowers.theta;
+  if (denominator <= 0) return null;
+  return bandPowers.beta / denominator;
+}
+```
+
+原始 EI 会在 Zustand store（`src/store/eegStore.ts`）里进行 EMA 平滑：
+
+```typescript
+smoothEI = EMA_ALPHA * rawEI + (1 - EMA_ALPHA) * prevSmoothEI;
+```
+
+## 第七步：专注度分类
+
+**文件**：`src/focus/focusCalibration.ts`
+
+整个流程是一个四状态状态机：
+
+`idle → waiting-warmup → collecting-baseline → active`
+
+每个决策窗口会把当前 EI 中位数与基线参考值进行比较。
+
+## 第八步：AI 管线
+
+**文件**：`src/ai/agentPipeline.ts`、`src/ai/indexedDb.ts`
+
+五频段特征帧（δ、θ、α、β、γ，每 0.5 秒一帧）会写入 IndexedDB。  
+用户提问时，系统会取回这些帧，生成摘要，并作为上下文发送给兼容 OpenAI 接口的 LLM。
+
+## 关键架构选择
+
+| 决策 | 原因 |
+|---|---|
+| 用 **Observer Bus** 承载波形 | 避免 250 Hz React 重渲染 |
+| 用 **Zustand** 管理 UI 状态 | 轻量，适合与 React DevTools 配合 |
+| 用 **refs** 保存不可序列化对象 | `SerialPort`、`FileStream`、分析器等都不能放进 store |
+| **不使用 React Router** | 对工作台型应用来说，单页标签切换更简单 |
+| 使用 **静态构建**（`dist/`） | 可部署到任意静态环境，无需后端 |
+| 当前只做 **Web Serial** | 但 `src/transport/` 已为未来桥接方案留好抽象 |
+
+## 接下来
+
+→ [理解串口协议与初始化流程](/zh/docs/freebci-daq/dev/serial-protocol)

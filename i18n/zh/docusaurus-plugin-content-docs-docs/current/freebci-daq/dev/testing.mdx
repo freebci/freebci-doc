@@ -1,0 +1,238 @@
+---
+sidebar_position: 11
+sidebar_label: '测试'
+---
+
+# 10. 测试
+
+> 目标：使用 Vitest 编写单元测试、通过 `fake-indexeddb` 模拟 IndexedDB，并验证串口协议解析。
+
+## 测试基础配置
+
+**框架**：Vitest（无独立配置文件，复用 `vite.config.ts`）
+
+```bash
+npm run test:unit       # 运行全部单元测试
+npm test                # typecheck + 单元测试
+
+npx vitest run tests/serialEegProtocol.test.ts
+npx vitest run -t "parses a valid packet"
+```
+
+### 测试文件位置
+
+所有测试文件都在项目根目录下的 `tests/`。  
+它们**不包含**在 `tsconfig.json` 的 `include` 中，Vitest 会单独编译它们。
+
+## 编写组件测试
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MyPanel } from '../src/components/MyPanel';
+
+describe('MyPanel', () => {
+  it('renders the title', () => {
+    render(<MyPanel locale="en-US" />);
+    expect(screen.getByText('My Panel Title')).toBeDefined();
+  });
+
+  it('shows empty state when no data', () => {
+    render(<MyPanel locale="en-US" />);
+    expect(screen.getByText('No data yet.')).toBeDefined();
+  });
+});
+```
+
+## 测试 Zustand Store
+
+```typescript
+import { describe, it, expect, beforeEach } from 'vitest';
+import { useEegStore } from '../src/store/eegStore';
+
+describe('EegStore', () => {
+  beforeEach(() => {
+    useEegStore.setState({
+      stream: { isStreaming: false, isStarting: false },
+      status: 'idle',
+    });
+  });
+
+  it('updates stream state', () => {
+    useEegStore.getState().setStream({ isStreaming: true, isStarting: true });
+    expect(useEegStore.getState().stream.isStreaming).toBe(true);
+  });
+
+  it('pushes engagement results with EMA smoothing', () => {
+    useEegStore.getState().pushEngagementResult({
+      timestamp: Date.now(),
+      ei: 0.5,
+      bandPowers: { delta: 1, theta: 2, alpha: 3, beta: 4, gamma: 5 },
+    });
+    const latest = useEegStore.getState().smoothEngagementResults.at(-1);
+    expect(latest?.ei).toBeDefined();
+  });
+});
+```
+
+### Zustand 测试建议
+
+- 直接使用 `getState()` 和 `setState()`，不需要为了测试 store 去渲染组件
+- 在 `beforeEach` 中重置状态，保证测试隔离
+- 如果测试 EMA 平滑逻辑，连续 push 多个结果后检查平滑值
+
+## 测试串口协议解析
+
+```typescript
+import { describe, it, expect } from 'vitest';
+
+describe('Serial Protocol Parser', () => {
+  it('parses a valid int24 frame', () => {
+    const packet = new Uint8Array([
+      0xAA, 0xBB,
+      0x01, 0x00, 0x00, 0x00,
+      0x00, 0x08, 0x00,
+    ]);
+
+    const batches = parser.feedChunk(packet);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].samples[0][0]).toBe(2048);
+  });
+
+  it('detects packet sequence gaps', () => {
+    const gap = countForwardSerialDeviceSeqGap(5, 8);
+    expect(gap).toBe(3);
+  });
+
+  it('ignores wrap-around in sequence comparison', () => {
+    const gap = countForwardSerialDeviceSeqGap(0xFFFFFFFE, 1);
+    expect(gap).toBe(0);
+  });
+
+  it('rejects malformed packets', () => {
+    const garbage = new Uint8Array([0xFF, 0xFF, 0xFF]);
+    const batches = parser.feedChunk(garbage);
+    expect(batches).toHaveLength(0);
+  });
+});
+```
+
+## 使用 fake-indexeddb
+
+**依赖包**：`fake-indexeddb`
+
+```typescript
+import { describe, it, expect, beforeEach } from 'vitest';
+import 'fake-indexeddb/auto';
+
+describe('AI IndexedDB', () => {
+  beforeEach(() => {
+    // 每个测试获得一套内存中的 IDB
+  });
+
+  it('writes and reads feature frames', async () => {
+    const frame = {
+      timestampMs: Date.now(),
+      bandPowers: { delta: 1, theta: 2, alpha: 3, beta: 4, gamma: 5 },
+      channelName: 'ch0',
+      bindingId: 'test-binding',
+    };
+
+    await writeFeatureFrame('test-conversation', frame);
+    const frames = await readFeatureFrames('test-conversation', {
+      startMs: 0,
+      endMs: Date.now() + 1000,
+    });
+
+    expect(frames).toHaveLength(1);
+    expect(frames[0].bandPowers.alpha).toBe(3);
+  });
+});
+```
+
+## 测试算法函数
+
+纯函数最容易测：
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { calculateEngagementIndex } from '../src/algorithms/engagementIndex';
+
+describe('calculateEngagementIndex', () => {
+  it('returns beta / (alpha + theta)', () => {
+    const result = calculateEngagementIndex({
+      delta: 1, theta: 2, alpha: 3, beta: 4, gamma: 5,
+    });
+    expect(result).toBeCloseTo(4 / (3 + 2));
+  });
+
+  it('returns null when denominator is zero', () => {
+    const result = calculateEngagementIndex({
+      delta: 1, theta: 0, alpha: 0, beta: 4, gamma: 5,
+    });
+    expect(result).toBeNull();
+  });
+});
+```
+
+## 测试滤波器函数
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { highPassBiquad } from '../src/analysis/butterworthFilter';
+
+describe('Butterworth Biquad', () => {
+  it('passes DC through a highpass filter', () => {
+    const hp = highPassBiquad(10, 250, 0.707);
+
+    for (let i = 0; i < 1000; i++) {
+      hp.processSample(1.0);
+    }
+
+    const output = hp.processSample(1.0);
+    expect(Math.abs(output)).toBeLessThan(0.01);
+  });
+
+  it('reset() clears state', () => {
+    const hp = highPassBiquad(10, 250, 0.707);
+    hp.processSample(100);
+
+    hp.reset();
+
+    let settled = 0;
+    for (let i = 0; i < 100; i++) {
+      settled = hp.processSample(0);
+    }
+    expect(Math.abs(settled)).toBeLessThan(0.001);
+  });
+});
+```
+
+## 在 CI 中运行测试
+
+```bash
+npm test
+```
+
+这相当于：
+
+```bash
+npm run typecheck && npm run test:unit
+```
+
+测试成功时退出码为 `0`，适合接入 GitHub Actions、GitLab CI 等环境。
+
+## 常见测试模式
+
+| 测什么 | 怎么测 |
+|---|---|
+| 纯函数 | `expect(fn(input)).toBe(expected)` |
+| Store action | `getState().action(); expect(getState().field).toBe(...)` |
+| React 组件 | `render(<Cmp />); expect(screen.getByText(...))` |
+| IndexedDB | 文件顶部 `import 'fake-indexeddb/auto'` |
+| 协议解析器 | 构造 `Uint8Array`，调用 `feedChunk()` |
+| 边界条件 | `null`、零值、极端值、序列号回绕 |
+
+## 接下来
+
+→ [构建与部署](/zh/docs/freebci-daq/dev/build-and-deploy)

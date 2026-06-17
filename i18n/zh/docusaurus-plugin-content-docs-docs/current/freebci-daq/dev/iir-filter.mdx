@@ -1,0 +1,175 @@
+---
+sidebar_position: 8
+sidebar_label: 'IIR 滤波'
+---
+
+# 7. IIR 滤波管线
+
+> 目标：理解 Butterworth IIR 滤波器是如何实现的、系数如何重建，以及用户修改截止频率后系统会发生什么。
+
+## 架构
+
+**涉及文件**：
+
+| 文件 | 作用 |
+|---|---|
+| `src/analysis/butterworthFilter.ts` | `Biquad` 级、`CascadedScalarFilter` 链和系数公式 |
+| `src/analysis/eegFilters.ts` | `EegFilter` 接口和 `EegFilterChain` |
+| `src/analysis/filterRegistry.ts` | 过滤器实例工厂与默认参数查找 |
+| `src/components/FilterControlsPanel.tsx` | 用户侧截止频率输入控件 |
+
+## Biquad 滤波级
+
+整个滤波器由级联的 **Biquad**（二极点二零点）阶段构成，采用 **Direct Form II** 拓扑：
+
+```typescript
+export class Biquad implements EegFilter {
+  private x1 = 0; private x2 = 0;
+  private y1 = 0; private y2 = 0;
+
+  constructor(
+    private readonly b0: number, private readonly b1: number,
+    private readonly b2: number, private readonly a1: number,
+    private readonly a2: number,
+  ) {}
+
+  processSample(x: number): number {
+    const y = this.b0 * x + this.b1 * this.x1 + this.b2 * this.x2
+            - this.a1 * this.y1 - this.a2 * this.y2;
+    this.x2 = this.x1; this.x1 = x;
+    this.y2 = this.y1; this.y1 = y;
+    return y;
+  }
+
+  reset(): void {
+    this.x1 = 0; this.x2 = 0;
+    this.y1 = 0; this.y2 = 0;
+  }
+}
+```
+
+### 为什么使用 Direct Form II
+
+- **省内存**：每级只保存 4 个状态变量
+- 对这里使用的 Butterworth 系数来说**数值稳定**
+- **便于级联**：上一级输出直接进入下一级输入
+
+## 通过级联 Biquad 实现 4 阶 Butterworth
+
+一个 4 阶滤波器 = **两个 2 阶级联阶段**：
+
+```typescript
+export class CascadedScalarFilter implements EegFilter {
+  constructor(private readonly stages: EegFilter[]) {}
+
+  processSample(value: number): number {
+    let output = value;
+    for (const stage of this.stages) {
+      output = stage.processSample(output);
+    }
+    return output;
+  }
+
+  reset(): void {
+    for (const stage of this.stages) {
+      stage.reset();
+    }
+  }
+}
+```
+
+带通滤波的完整链路如下：
+
+```text
+原始样本 → [HP1] → [HP2] → [LP1] → [LP2] → 滤波后样本
+```
+
+## 系数计算
+
+系数使用 **RBJ Audio EQ Cookbook** 公式计算：
+
+```typescript
+export function highPassBiquad(cutoffHz: number, sampleRateHz: number, q: number): Biquad {
+  const w0 = (2 * Math.PI * cutoffHz) / sampleRateHz;
+  const cosw = Math.cos(w0);
+  const sinw = Math.sin(w0);
+  const alpha = sinw / (2 * q);
+  const a0 = 1 + alpha;
+  return new Biquad(b0, b1, b2, a1, a2);
+}
+```
+
+低通滤波器结构一样，只是系数推导不同。
+
+**Q 值说明**：  
+对于 Butterworth 响应，每个二阶级的 Q 值大约是 `0.707`，而完整 4 阶结构中的各级会使用匹配的 Q 值组合，以保持通带平坦。
+
+## EegFilter 接口
+
+```typescript
+export interface EegFilter {
+  processSample(value: number): number;
+  reset(): void;
+}
+```
+
+无论是单个 `Biquad`，还是完整级联链路，都实现这个接口。这使得滤波器具有良好的可组合性。
+
+## 什么时候会触发重建
+
+当用户在 Filter Controls 面板中修改截止频率时：
+
+1. 重新计算新系数
+2. 用新阶段构建新的 `EegFilterChain`
+3. 调用 `reset()` 清空所有 delay line
+4. **清空 2 秒 FFT 分析窗口**
+
+```typescript
+function rebuildFilter(hpHz: number, lpHz: number) {
+  const stages = [
+    highPassBiquad(hpHz, 250, Q_VALUES[0]),
+    highPassBiquad(hpHz, 250, Q_VALUES[1]),
+    lowPassBiquad(lpHz, 250, Q_VALUES[0]),
+    lowPassBiquad(lpHz, 250, Q_VALUES[1]),
+  ];
+  const newFilter = new CascadedScalarFilter(stages);
+  frequencyAnalyzer.clearWindow();
+  return newFilter;
+}
+```
+
+> **重要**：不要把不同滤波状态下的数据拼在同一个 FFT 窗口里。每次修改滤波参数都必须清空窗口。
+
+## 每样本处理
+
+每个原始样本在进入 FFT 窗口前，都会先经过滤波：
+
+```typescript
+for (const sample of batch.samples) {
+  const filtered = filter.processSample(sample);
+  filteredWaveformBus.push(filtered, channelName);
+  fftWindowBuffer.push(filtered);
+}
+```
+
+这意味着每个通道每秒会调用 **250 次** `processSample()`。  
+这也是为什么这里选择 Direct Form II 拓扑：每样本运算量足够小。
+
+## 添加新的滤波器类型
+
+如果你要新增例如 Notch 或 Chebyshev：
+
+1. 在 `src/analysis/` 下新建实现，满足 `EegFilter` 接口
+2. 在 `filterRegistry.ts` 中注册
+3. 在 `FilterControlsPanel.tsx` 中增加 UI 入口
+
+## 常见错误
+
+1. 修改系数后没有调用 `reset()`
+2. 修改滤波参数后没有清空 FFT 窗口
+3. 忘记采样率固定为 250 Hz
+4. 做 4 阶 Butterworth 时，没有正确处理各级 Q 值对齐
+
+## 接下来
+
+→ [理解 AI 分析管线](/zh/docs/freebci-daq/dev/ai-pipeline)

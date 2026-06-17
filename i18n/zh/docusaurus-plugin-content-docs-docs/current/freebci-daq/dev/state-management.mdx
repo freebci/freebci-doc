@@ -1,0 +1,221 @@
+---
+sidebar_position: 7
+sidebar_label: '状态管理'
+---
+
+# 6. 状态管理
+
+> 目标：理解 Zustand（可序列化 UI 状态）与 React refs（不可序列化 Web API 对象）之间的边界，以及观察者总线如何以 60 fps 驱动 Canvas 渲染。
+
+## 边界在哪里
+
+```text
+┌─────────────────────────────────────────────────────────┐
+│  Zustand (useEegStore, useAiStore)                     │
+│  ─────────────────────────────────────                 │
+│  可序列化状态：                                        │
+│    • stream 状态（idle / streaming / stalled）         │
+│    • acquisition 状态（ready / connecting / error）    │
+│    • 频带功率历史、平滑后的 EI 趋势                     │
+│    • 诊断日志                                           │
+│    • AI 对话元数据、模型设置                           │
+│                                                         │
+│  可以：序列化到 localStorage，被 DevTools 检查，被选择器 │
+│  从任意组件读取                                          │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  React Refs (useAcquisitionActions)                    │
+│  ─────────────────────────────────────                 │
+│  不可序列化 Web API 对象：                             │
+│    • SerialPort 实例                                    │
+│    • ReadableStreamDefaultReader                       │
+│    • EegFrequencyAnalyzer 实例                         │
+│    • FileSystemWritableFileStream                      │
+│    • EegProtocolParser 实例                            │
+│                                                         │
+│  不能：序列化、放进 Zustand、在 DevTools 中被直接检查     │
+│  因此通过 useRef() 保存，并跨重渲染存活                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+## 核心 Hook：useAcquisitionActions
+
+**文件**：`src/hooks/useAcquisitionActions.ts`
+
+这个 hook 是中央状态机，负责持有所有不可序列化对象，并编排连接生命周期：
+
+```typescript
+function useAcquisitionActions(locale: Locale) {
+  const portRef = useRef<SerialPort | null>(null);
+  const readerRef = useRef<ReadableStreamDefaultReader | null>(null);
+  const parserRef = useRef<EegProtocolParser | null>(null);
+  const analyzerRef = useRef<EegFrequencyAnalyzer | null>(null);
+  const fileRef = useRef<FileSystemWritableFileStream | null>(null);
+
+  async function connectSelectedDevice() {
+    const port = await navigator.serial.requestPort();
+    portRef.current = port;
+    useEegStore.getState().setStatus('ready');
+  }
+
+  async function startEegStream() {
+    parserRef.current = createParser();
+    analyzerRef.current = createAnalyzer();
+    useEegStore.getState().setStream({ isStreaming: true });
+  }
+
+  return { connectSelectedDevice, startEegStream, disconnect };
+}
+```
+
+### 为什么必须这么分离
+
+| 放进 Zustand 合适吗？ | `SerialPort` | `Reader` | `Analyzer` | `FileStream` |
+|---|---|---|---|---|
+| 能 `JSON.stringify` 吗？ | 否 | 否 | 否 | 否 |
+| 能跨页面刷新保留吗？ | 否 | 否 | 否 | 否 |
+| 有异步生命周期方法吗？ | 是 | 是 | 是 | 是 |
+| 应该触发 React 重渲染吗？ | 不应该 | 不应该 | 不应该 | 不应该 |
+
+经验规则：
+
+> 只要对象上有 `.close()`、`.read()` 或其他异步生命周期方法，就应该放进 ref，而不是 Zustand。
+
+## Zustand 模式
+
+**文件**：`src/store/eegStore.ts`、`src/store/aiStore.ts`
+
+### 读取数据
+
+```typescript
+// ✅ 精确选择你需要的状态
+const status = useEegStore((s) => s.status);
+
+// ✅ 读取派生值
+const lastEI = useEegStore((s) => s.smoothEngagementResults.at(-1)?.ei);
+
+// ❌ 不推荐：拿整个 store，会导致任何变化都触发重渲染
+const entireStore = useEegStore();
+```
+
+### 写入数据
+
+```typescript
+// 组件内部
+const pushResult = useEegStore((s) => s.pushEngagementResult);
+
+// React 之外（reader loop、ref 回调等）
+useEegStore.getState().pushEngagementResult({ ... });
+```
+
+在 React 组件外部，例如 reader loop 或 `requestAnimationFrame` 回调里，应使用 `getState()`。
+
+### Store 结构
+
+```typescript
+interface EegStore {
+  stream: { isStreaming: boolean; isStarting: boolean; ... };
+  status: AcquisitionStatus;
+  smoothEngagementResults: EngagementResult[];
+  bandPowerHistory: BandPowerEntry[];
+  diagnostics: DiagnosticEntry[];
+
+  setStream: (s: StreamState) => void;
+  setStatus: (s: AcquisitionStatus) => void;
+  pushEngagementResult: (r: EngagementResult) => void;
+  pushDiagnostic: (d: DiagnosticEntry) => void;
+}
+```
+
+## 观察者总线模式
+
+**文件**：`src/state/waveformBus.ts`、`src/state/rawWaveformBus.ts`、`src/state/filteredWaveformBus.ts`
+
+### 为什么需要它
+
+250 Hz 数据如果每次都更新 Zustand，就会带来每秒 250 次 React 更新，性能会迅速失控。
+
+### 总线接口
+
+```typescript
+export interface WaveformBus {
+  push(value: number, channelName?: string, quality?: WaveformSampleQuality): void;
+  copyLatest(out: Float32Array, requestedCount: number, channelName?: string): number;
+  reset(): void;
+  getCapacity(): number;
+  getWriteIndex(channelName?: string): number;
+  getChannelNames(): string[];
+}
+```
+
+- `push`：快速写入 ring buffer
+- `copyLatest`：把最近 N 个样本拷贝到预分配的数组中
+- 每个通道都有自己的缓冲区
+
+### 渲染循环
+
+```typescript
+const samples = new Float32Array(maxSamples);
+
+function draw() {
+  const count = rawWaveformBus.copyLatest(samples, windowWidth, 'ch0');
+
+  ctx.clearRect(0, 0, width, height);
+  for (let i = 0; i < count; i++) {
+    const x = (i / count) * width;
+    const y = scaleY(samples[i]);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  requestAnimationFrame(draw);
+}
+```
+
+这段逻辑运行在 **60 fps** 左右，而不是 250 Hz。React 不参与逐帧绘制。
+
+### 新增一个总线
+
+如果你要为自定义信号新增一个数据总线：
+
+```typescript
+// src/state/myCustomBus.ts
+import { createWaveformBus } from './waveformBus';
+export const myCustomBus = createWaveformBus();
+```
+
+然后从数据源中往里 `push`，在 Canvas 组件里从中 `copyLatest`。
+
+## 把所有环节串起来
+
+```text
+Serial port (ref)
+  │ reader.read()
+  ▼
+Parser (ref)
+  │ feedChunk()
+  ▼
+Batch handler (ref callback)
+  ├── rawWaveformBus.push()      → requestAnimationFrame → Canvas
+  ├── filter (ref) → filteredWaveformBus.push() → Canvas
+  ├── analyzer (ref) → bandPowers
+  │     │
+  │     └── useEegStore.getState().pushEngagementResult() → Zustand
+  │           │
+  │           └── 被组件通过 selector 读取并触发 React 重渲染
+  │
+  └── CSV writer (ref) → 文件系统
+```
+
+## 常见错误
+
+1. **把 SerialPort 放进 Zustand**：会因为不可序列化而出问题，应使用 ref
+2. **在组件里用 `getState()` 读取 UI 状态**：组件内应该用 `useEegStore(selector)`
+3. **把 250 Hz 数据直接推进 Zustand**：会带来灾难性性能问题，应走观察者总线
+4. **忘记释放句柄或资源**
+5. **在 store 中保存本可派生的数据**
+
+## 接下来
+
+→ [编写和运行测试](/zh/docs/freebci-daq/dev/testing)

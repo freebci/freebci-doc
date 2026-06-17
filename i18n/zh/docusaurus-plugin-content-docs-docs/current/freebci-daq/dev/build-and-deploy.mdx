@@ -1,0 +1,165 @@
+---
+sidebar_position: 12
+sidebar_label: '构建与部署'
+---
+
+# 11. 构建与部署
+
+> 目标：构建生产包、理解输出内容，并把应用部署到静态托管环境。
+
+## 构建命令
+
+```bash
+npm run build
+# 等价于：
+# npm run typecheck && vite build
+```
+
+输出目录为 `dist/`：
+
+```text
+dist/
+├── index.html
+├── assets/
+│   ├── index-*.css
+│   ├── index-*.js
+│   └── *.woff2
+└── favicon-*.png
+```
+
+## 构建产物说明
+
+| 文件 | 内容 |
+|---|---|
+| `index.html` | SPA 外壳，负责加载 CSS 与 JS |
+| `index-*.css` | Tailwind 工具类、主题变量、自定义样式 |
+| `index-*.js` | React 应用、串口解析、FFT、AI SDK、i18n 等代码 |
+
+构建结果是**完全自包含**的，不依赖外部字体 CDN 或第三方脚本。
+
+## 大 chunk 提示
+
+由于这是一个集成 FFT、UI 与 AI 能力的单页应用，最大的 JS chunk 较大是预期内现象。  
+如果你希望进一步拆包，可以在 `vite.config.ts` 中使用 `manualChunks`。
+
+## 本地预览
+
+```bash
+npm run preview
+# 默认在 http://localhost:4173 预览 dist/
+```
+
+部署前建议先测试一次生产构建，因为某些问题只会在生产模式出现，例如：
+
+- 资源路径错误
+- CSP 限制
+- CORS 差异
+
+## 部署要求
+
+### 关键点：必须是 HTTPS 或 localhost
+
+Web Serial API 只能运行在**安全上下文**下：
+
+| 地址 | Web Serial 是否可用 |
+|---|---|
+| `http://localhost:4173` | 可用 |
+| `http://127.0.0.1:4173` | 可用 |
+| `https://your-domain.com` | 可用 |
+| `http://your-domain.com` | 不可用 |
+| `file:///.../index.html` | 不可用 |
+
+### 可选部署方式
+
+| 平台 | 说明 |
+|---|---|
+| GitHub Pages | 默认 HTTPS，适合开源项目 |
+| Netlify | 可直接上传 `dist/`，自动 HTTPS |
+| Vercel | 支持 `vercel --prod`，自动 HTTPS |
+| Cloudflare Pages | 接入仓库即可自动构建 |
+| nginx | 自己配置静态目录与 SSL |
+| 任意静态托管 | 只要支持 HTTPS 即可 |
+
+### nginx 配置示例
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+
+    ssl_certificate     /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+    root /var/www/freebci-daq/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    add_header Permissions-Policy "serial=(self)";
+}
+```
+
+### Dockerfile 示例
+
+```dockerfile
+FROM nginx:alpine
+COPY dist/ /usr/share/nginx/html/
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+```
+
+## 构建时环境变量
+
+`VITE_*` 变量会在构建时被直接内联进 bundle。
+
+这意味着：
+
+1. `.env` 中的值会被写入产物
+2. 修改 `.env` 之后必须重新构建
+3. 高级调参面板中的 localStorage 配置可以在运行时覆盖这些默认值
+
+```bash
+cp .env.example .env
+# 修改 .env
+npm run build
+```
+
+## 内容安全策略（CSP）
+
+如果你的部署环境启用了 CSP，至少要允许：
+
+```text
+default-src 'self';
+script-src 'self' 'unsafe-inline';
+style-src 'self' 'unsafe-inline';
+connect-src 'self' https://api.openai.com https://api.deepseek.com http://localhost:11434;
+font-src 'self';
+img-src 'self' data:;
+```
+
+如果你使用其他 AI 提供方，请同步更新 `connect-src`。
+
+## 部署前检查清单
+
+- [ ] `npm test` 通过
+- [ ] `npm run build` 成功
+- [ ] `npm run preview` 后在 Chrome 中可正常打开 Web Serial
+- [ ] `.env` 中的生产参数已经确认
+- [ ] HTTPS 证书有效，或仅限 localhost 使用
+- [ ] CSP 不会阻塞字体、脚本或 AI API
+
+## 常见部署问题
+
+| 问题 | 原因 | 解决方式 |
+|---|---|---|
+| Web Serial 对话框不弹出 | 部署在 HTTP 而非 HTTPS | 切换到 HTTPS |
+| “Not a secure context” | 直接用 `file://` 打开 | 使用 Web 服务器 |
+| 刷新后 404 / 空白页 | 缺少 SPA fallback | nginx 中配置 `try_files ... /index.html` |
+| 字体异常 | CSP 阻塞字体加载 | 增加 `font-src 'self'` |
+| AI API 调用失败 | CSP 阻塞外部域名 | 在 `connect-src` 中放行 |
+
+## 接下来
+
+→ [开发者指南](/zh/docs/freebci-daq/reference/developer-guide)

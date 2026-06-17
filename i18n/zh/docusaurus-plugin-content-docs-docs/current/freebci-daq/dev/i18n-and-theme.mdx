@@ -1,0 +1,241 @@
+---
+sidebar_position: 10
+sidebar_label: 'i18n 与主题'
+---
+
+# 9. i18n 与主题
+
+> 目标：为中英文支持添加新的翻译键，并理解如何定制 Tailwind v4 主题。
+
+## 国际化（i18n）
+
+**文件**：`src/i18n.ts`
+
+### 翻译结构
+
+```typescript
+const translations = {
+  'zh-CN': {
+    'app.title': 'FreeBCI DAQ',
+    'app.heading': '脑电信号采集与实时频域分析',
+  },
+  'en-US': {
+    'app.title': 'FreeBCI DAQ',
+    'app.heading': 'EEG Acquisition & Realtime Spectral Analysis',
+  },
+} as const;
+
+export type TranslationKey = keyof (typeof translations)['zh-CN'];
+
+export function t(locale: Locale, key: TranslationKey, values: Record<string, string | number> = {}): string {
+  let message: string = translations[locale][key];
+  for (const [name, value] of Object.entries(values)) {
+    message = message.split(`{${name}}`).join(String(value));
+  }
+  return message;
+}
+```
+
+### 添加一个新翻译键
+
+1. 在 **两个语言块** 中都加入这个 key：
+
+```typescript
+// en-US
+'myPanel.eyebrow': 'My Feature',
+'myPanel.title': 'My Panel Title',
+'myPanel.description': 'This panel shows {count} items.',
+
+// zh-CN
+'myPanel.eyebrow': '我的功能',
+'myPanel.title': '我的面板标题',
+'myPanel.description': '此面板显示 {count} 个项目。',
+```
+
+2. 在组件中使用它：
+
+```tsx
+import { t } from '../i18n';
+import type { Locale } from '../i18n';
+
+export function MyPanel({ locale }: { locale: Locale }) {
+  return (
+    <Card>
+      <CardHeader
+        eyebrow={t(locale, 'myPanel.eyebrow')}
+        title={t(locale, 'myPanel.title')}
+      />
+      <CardBody>
+        <p>{t(locale, 'myPanel.description', { count: 42 })}</p>
+      </CardBody>
+    </Card>
+  );
+}
+```
+
+### 命名约定
+
+```text
+{module}.{subKey}
+
+'app.title'
+'hardware.eyebrow'
+'connection.openSerial'
+'filter.paramHpCutoffHz'
+'focus.phaseLabel'
+'ai.modelSettingsTitle'
+```
+
+### TypeScript 约束
+
+`TranslationKey` 来自 `zh-CN` 的 key 集合。  
+如果你只在 `zh-CN` 里加了 key，却忘了 `en-US`，TypeScript 未必会直接报错，但英文运行时会得到 `undefined`。所以一定要双语同时维护。
+
+### 带参数的字符串
+
+```typescript
+'diagnostics.duration': 'Duration {duration} ms',
+'focus.outputWindowSecondsLabel': 'User output {seconds}s focus state',
+
+t(locale, 'diagnostics.duration', { duration: 234 });
+```
+
+### locale 如何切换
+
+locale 目前保存在 `App.tsx` 的 React state 中，由底部状态栏的语言切换按钮控制。默认值是 `zh-CN`，并**不会**持久化到 localStorage。
+
+```typescript
+const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
+
+useEffect(() => {
+  document.documentElement.lang = locale;
+  document.title = t(locale, 'app.title');
+}, [locale]);
+```
+
+## 主题（Tailwind v4）
+
+**文件**：`src/styles.css`
+
+### 主题变量
+
+Tailwind v4 使用 CSS `@theme` 来声明设计 Token：
+
+```css
+@import "tailwindcss";
+
+@theme {
+  --color-paper: #f8f8f9;
+  --color-card: #ffffff;
+  --color-surface-2: #ececed;
+  --color-ink: #111111;
+  --color-meta: #525252;
+  --color-hint: #8a8a8a;
+  --color-hairline: #d4d4d8;
+  --color-accent: #0e7490;
+  --color-accent-soft: #e0f7fa;
+  --color-success: #047857;
+  --color-warn: #b45309;
+  --color-error: #b91c1c;
+  --color-grid: #e8e8eb;
+  --color-led-off: #c4c4c8;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, ...;
+  --font-mono: "JetBrains Mono", ui-monospace, ...;
+  --font-serif: "Instrument Serif", ui-serif, ...;
+
+  --radius-sm: 2px;
+  --radius-md: 4px;
+}
+```
+
+### 在组件中使用这些 token
+
+```tsx
+<div className="bg-card text-ink border border-hairline" />
+<span className="text-accent font-mono" />
+<button className="bg-accent text-white rounded-sm" />
+```
+
+### 添加一个新的主题色
+
+```css
+@theme {
+  --color-brand-purple: #7c3aed;
+}
+```
+
+然后在组件中用：
+
+```tsx
+className="bg-brand-purple text-white"
+```
+
+### 字体
+
+字体通过 `@fontsource` 包在 `src/main.tsx` 中引入：
+
+```typescript
+import '@fontsource/inter/400.css';
+import '@fontsource/inter/500.css';
+import '@fontsource/inter/600.css';
+import '@fontsource/instrument-serif/400.css';
+import '@fontsource/jetbrains-mono/400.css';
+import '@fontsource/jetbrains-mono/500.css';
+```
+
+这些字体会随着 Vite 构建一起打包，不依赖外部 CDN。
+
+## UI 原语
+
+**目录**：`src/components/ui/`
+
+| 组件 | 用途 | 关键 props |
+|---|---|---|
+| `Card` | 区块容器 | `as`, `ariaLabelledBy` |
+| `CardHeader` | 卡片头部 | `eyebrow`, `title`, `titleId`, `trailing` |
+| `CardBody` | 卡片内容区 | `className` |
+| `Button` | 按钮 | `variant`, `size` |
+| `NumberInput` | 数字输入 | `min`, `max`, `step`, `value`, `onChange` |
+| `TextInput` | 文本输入 | 标准 input props |
+| `Checkbox` | 勾选框 | `checked`, `onChange` |
+| `ToggleSwitch` | 开关 | `checked`, `onChange` |
+| `StatusDot` | 状态点 | `tone`, `pulse` |
+| `Field` | 表单字段容器 | `label`, `children` |
+| `LanguageToggle` | 中英切换 | `locale`, `onToggle` |
+
+### Card 结构模式
+
+```tsx
+import { Card, CardHeader, CardBody } from './ui';
+
+<Card ariaLabelledBy="my-panel-title">
+  <CardHeader
+    eyebrow="Category"
+    title="Panel Title"
+    titleId="my-panel-title"
+    trailing={<Button size="sm">Action</Button>}
+  />
+  <CardBody>
+    {/* Panel content */}
+  </CardBody>
+</Card>
+```
+
+规则：
+
+- `Card` 上设置 `ariaLabelledBy`
+- `CardHeader` 上设置对应 `titleId`
+- `eyebrow` 用于标题上方的小标签
+- `trailing` 用于头部右侧操作按钮
+
+## 常见错误
+
+1. 只给一种语言加了翻译键
+2. 写死英文字符串，没有通过 `t(locale, key)` 输出
+3. 忘记给 `translations` 写 `as const`
+4. 使用了不存在的 Tailwind token 或无约束的任意样式值
+
+## 接下来
+
+→ [编写和运行测试](/zh/docs/freebci-daq/dev/testing)

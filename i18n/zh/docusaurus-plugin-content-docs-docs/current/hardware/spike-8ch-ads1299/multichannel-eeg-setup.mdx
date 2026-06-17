@@ -1,0 +1,65 @@
+---
+sidebar_position: 3
+sidebar_label: '多通道 EEG 搭建'
+---
+
+# 8CH 多通道 EEG 搭建
+
+> 如果你希望体验完整的 FreeBCI DAQ 多通道工作流：多个点位绑定、多个实时波形和更丰富的监测，这就是你应该走的路径。
+
+## 这个流程适用于什么目标
+
+当你需要以下能力时，使用 8CH 路径：
+
+- 同时开启多个 EEG 通道
+- 为每个采集通道绑定独立点位
+- 获得比 1CH 专注度 Demo 更完整的监测视图
+
+## 在 DAQ 中的预期
+
+相比 1CH Demo：
+
+- 需要为每个活动通道添加绑定行
+- 开始采集前必须仔细确认点位名称
+- 验证信号质量时要逐通道检查，而不是只做一次全局判断
+
+## 推荐 DAQ 路径
+
+1. 打开 FreeBCI DAQ
+2. 确认硬件参数
+3. 为每个通道添加并确认点位绑定
+4. 打开有线串口连接
+5. 开始采集
+6. 在 **Live（实时监测）** 页面逐通道检查
+7. 数据稳定后，再进入 **参与度与专注度** 等分析界面
+
+通用软件流程见：[连接到 FreeBCI DAQ](/zh/docs/hardware/connect-to-freebci-daq)
+
+## 你应该验证什么
+
+在把一次运行当成有效多通道会话之前，至少确认：
+
+- 每个目标通道都绑定到了正确点位
+- 多条波形都在稳定流动，并且看起来合理
+- 明显异常的坏通道能尽早识别出来
+- 整个会话足够稳定，可以进入后续分析
+
+## 在 8CH 中更重要的 DAQ 功能
+
+当你从 1CH 升级到 8CH 后，以下 DAQ 界面会更有价值：
+
+- [实时监测](/zh/docs/freebci-daq/live-monitoring)
+- [硬件配置](/zh/docs/freebci-daq/hardware-setup)
+- [系统与诊断](/zh/docs/freebci-daq/system-tuning)
+- [调参指南](/zh/docs/freebci-daq/tuning-guide)
+
+## 与 1CH 的关系
+
+8CH 不是另一套软件平台，而是同一平台的下一个层级。
+
+如果你已经跑通过 1CH 专注度 Demo，大多数 DAQ 操作都会很熟悉。新增的复杂度主要来自硬件、通道映射和多通道验证。
+
+## 接下来
+
+→ [从 1CH 升级到 8CH](/zh/docs/hardware/upgrade-from-1ch-to-8ch)  
+→ [实时监测](/zh/docs/freebci-daq/live-monitoring)

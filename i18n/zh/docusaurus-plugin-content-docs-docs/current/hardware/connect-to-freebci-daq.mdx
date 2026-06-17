@@ -1,0 +1,45 @@
+---
+sidebar_position: 5
+sidebar_label: '连接到 FreeBCI DAQ'
+---
+
+# 连接到 FreeBCI DAQ
+
+> FreeBCI Spike 1CH LH001 和 FreeBCI Spike 8CH ADS1299 都连接到同一套 FreeBCI DAQ 工作流。
+
+## 你需要准备
+
+- 桌面版 **Chrome** 或 **Edge**
+- 运行在 `localhost` 或其他安全 HTTPS 域名下的 FreeBCI DAQ
+- 一块通过 USB 串口连接的受支持 FreeBCI 模块
+- 已准备好的硬件参数和通道点位绑定
+
+## 通用 DAQ 工作流
+
+1. 打开 FreeBCI DAQ
+2. 进入 **Setup（设置）** 页面
+3. 确认硬件参数
+4. 添加点位绑定
+5. 打开有线串口连接
+6. 开始采集
+7. 前往 **Live（实时监测）** 查看波形与频谱
+
+## 模块相关的绑定预期
+
+- 对 **1CH** 来说，一个已绑定的采集点位就足够完成核心专注度 / 参与度 Demo
+- 对 **8CH** 来说，在进行严肃分析前，应为每个采集通道绑定真实电极点位
+
+## 两个模块都可用的 DAQ 功能
+
+- 原始波形与滤波波形
+- FFT 和频带功率趋势
+- 参与度指数（EI）趋势
+- 专注度校准
+- 会话录制
+- AI 辅助分析
+
+## 推荐下一步
+
+- 初学者：前往 [1CH 专注度 Demo](/zh/docs/hardware/spike-1ch-lh001/focus-demo)
+- 多通道 EEG：前往 [8CH 多通道 EEG 搭建](/zh/docs/hardware/spike-8ch-ads1299/multichannel-eeg-setup)
+- 平台详情：阅读 [FreeBCI DAQ 概览](/zh/docs/freebci-daq)
