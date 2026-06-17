@@ -68,6 +68,9 @@ export default function HomeFooter() {
               <Link to="/privacy" className="text-sm text-zinc-400 hover:text-white hover:no-underline">
                 Privacy
               </Link>
+              <Link to="/trademark" className="text-sm text-zinc-400 hover:text-white hover:no-underline">
+                Trademark
+              </Link>
             </div>
           </div>
         </div>

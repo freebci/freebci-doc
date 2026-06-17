@@ -127,6 +127,23 @@ export default function AboutPage() {
               </a>{' '}
               for specific license details.
             </p>
+
+            <h2 className="text-2xl font-semibold text-zinc-800 dark:text-zinc-100">
+              Brand & Trademark
+            </h2>
+            <p className="text-zinc-700 dark:text-zinc-300">
+              FreeBCI names, logos, and official branding assets are governed
+              separately from open-source and open-hardware release terms. See
+              the{' '}
+              <a
+                href="/trademark"
+                className="text-primary dark:text-primary-100 underline"
+              >
+                Trademark Policy
+              </a>{' '}
+              for allowed descriptive use, prohibited use, and official brand
+              identity guidance.
+            </p>
           </div>
         </div>
       </section>
